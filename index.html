@@ -1,0 +1,3132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单词家族生成器 (终极防套娃修复版)</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="单词家族点读卡">
+    <meta name="theme-color" content="#000000">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #7d5a50;
+            --bg-grid: #f4f8ff;
+            --card-w: 500px;
+            --card-h: 1083px;
+            --app-bg: #000000;
+            --app-text: #00ff41;
+            --app-border: #00ff41;
+            --app-accent: #00ff41;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--app-bg);
+            color: var(--app-text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px;
+            min-height: 100vh;
+            overflow-x: hidden;
+            transition: background 0.3s, color 0.3s;
+        }
+
+
+        .top-bar { width: 100%; max-width: 600px; display: flex; justify-content: flex-start; gap: 10px; margin-bottom: 12px; } .icon-btn { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; backdrop-filter: blur(5px); transition: all 0.2s; display: flex; align-items: center; gap: 5px; } .icon-btn:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.4); } .config-panel {
+            background: #000000;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #00ff41;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 600px;
+            box-sizing: border-box;
+        }
+        
+        h3 { margin-top: 0; color: #fff; text-align: center; text-shadow: 0 0 10px rgba(255, 255, 255, 0.2); }
+        .tips { font-size: 12px; color: #bbb; margin-bottom: 8px; display: block; text-align: center; }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid var(--app-border);
+            background: var(--app-bg);
+            color: var(--app-text);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+        button {
+            flex: 1; padding: 12px; background: var(--app-bg); color: var(--app-text);
+            border: 1px solid var(--app-border); border-radius: 4px; font-size: 15px; font-weight: bold;
+            cursor: pointer; transition: all 0.2s;
+        }
+        button:hover { filter: brightness(1.2); background: var(--app-accent); color: var(--app-bg); }
+        .icon-btn {
+            background: var(--app-bg); border: 1px solid var(--app-border); color: var(--app-text);
+            padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: all 0.2s;
+            display: flex; align-items: center; gap: 5px; 
+        }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #downloadBtn { background: #28a745; display: none; }
+        #downloadDataBtn { background: #ff9800; display: none; }
+
+        .results-grid {
+            display: flex; flex-wrap: wrap; gap: 6px; width: 100%; max-width: 1200px;
+            justify-content: center; padding-top: 15px;
+        }
+        @media (max-width: 768px) { .results-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
+
+        .image-wrapper {
+            cursor: pointer;
+            background: white; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            aspect-ratio: var(--card-w) / var(--card-h); position: relative;
+        }
+        .result-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .status-text { font-size: 14px; color: #666; text-align: center; padding: 10px; }
+        .error-text { color: #dc3545; font-weight: bold; }
+
+        /* ------------------ 渲染区样式 ------------------ */
+        #stagingArea { position: absolute; top: -9999px; left: -9999px; opacity: 0; pointer-events: none; }
+        
+        
+        .theme-oled { --card-bg: #000000; --text-color: #00ff41; --border-color: #008f11; --accent: #00ff41; --bg-img: none; --app-bg: #000000; --app-text: #00ff41; --app-border: #008f11; --app-accent: #00ff41; }
+        .theme-oled .top-section, .theme-oled .bottom-section, .theme-oled .center-word, .theme-oled .header-box { background: rgba(0, 20, 0, 0.9) !important; color: #00ff41 !important; border-color: #008f11 !important; box-shadow: 0 0 10px rgba(0, 255, 65, 0.1); } .theme-oled .word-item { color: #000 !important; border-color: rgba(255,255,255,0.1) !important; }
+        .theme-oled .zh-translation { color: #008f11; border-top-color: #004400; }
+        .theme-oled .def-item { background: rgba(0, 40, 0, 0.4); }
+        .theme-oled .def-item div { color: #00ff41 !important; }
+
+        /* 棕褐阅读模式 (Sepia/ReadEra) */
+        body.sepia-mode { background: #f4ecd8 !important; color: #5b4636 !important; }
+        body.sepia-mode .config-panel { background: #fdfaf3; border: 1px solid #d3c4a9; box-shadow: 0 4px 10px rgba(93, 64, 55, 0.1); color: #5b4636; }
+        body.sepia-mode .config-panel h3, body.sepia-mode .tips { color: #5b4636; }
+        body.sepia-mode button, body.sepia-mode .icon-btn { background: #fdfaf3 !important; color: #5b4636 !important; border: 1px solid #d3c4a9 !important; }
+        body.sepia-mode input, body.sepia-mode textarea, body.sepia-mode select { background: #fdfaf3; color: #5b4636; border: 1px solid #d3c4a9; }
+        body.sepia-mode .category-tab { background: #fdfaf3; border: 1px solid #d3c4a9; color: #5b4636; }
+        body.sepia-mode .category-tab.active { background: #8d6e63 !important; color: #fff !important; }
+        body.sepia-mode .lightbox, body.sepia-mode .lightbox-inner { background: #f4ecd8 !important; }
+        body.sepia-mode .lightbox-close, body.sepia-mode .lightbox-counter, body.sepia-mode .lightbox-fs-btn, body.sepia-mode .lightbox-trans-btn, body.sepia-mode .lightbox-menu {
+            background: #fdfaf3; border: 1px solid #d3c4a9; color: #5b4636;
+        }
+        body.sepia-mode .menu-item {
+            color: #5b4636; border: 1px solid rgba(141, 110, 99, 0.2);
+        }
+        body.sepia-mode .menu-item.active {
+            background: #8d6e63; color: #fff; border-color: #8d6e63;
+        }
+        .theme-sepia { --card-bg: #f4ecd8; --text-color: #5b4636; --border-color: #d3c4a9; --accent: #8d6e63; --bg-img: none; --app-bg: #f4ecd8; --app-text: #5b4636; --app-border: #d3c4a9; --app-accent: #8d6e63; }
+        .theme-sepia .top-section, .theme-sepia .bottom-section, .theme-sepia .center-word, .theme-sepia .header-box { background: #fdfaf3 !important; color: #5b4636 !important; border: 1px solid #d3c4a9 !important; } .theme-sepia .word-item { color: #111 !important; border: 1px solid rgba(0,0,0,0.1) !important; }
+        .theme-sepia .zh-translation { color: #8d6e63; border-top-color: #d3c4a9; }
+        .theme-sepia .def-item { background: rgba(141, 110, 99, 0.1); }
+        .theme-sepia .def-item div { color: #5b4636 !important; }
+
+        
+
+        /* ==================== 新增：琉璃液态磨砂主题 (theme-glass) ==================== */
+        .bg-blobs { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; filter: blur(100px); display: none; overflow: hidden; pointer-events: none; }
+        body.glass-mode .bg-blobs { display: block; }
+        .blob { position: absolute; width: 35vw; height: 35vw; border-radius: 50%; opacity: 0.4; mix-blend-mode: screen; animation: blob-move 20s infinite alternate ease-in-out; filter: blur(40px); }
+        .blob-1 { background: #ff2d55; top: -10%; left: -10%; }
+        .blob-2 { background: #34c759; bottom: -10%; right: -10%; animation-delay: -5s; }
+        .blob-3 { background: #af52de; top: 20%; left: 30%; animation-delay: -10s; }
+        .blob-4 { background: #007aff; top: 40%; left: 60%; animation-delay: -15s; }
+        .blob-5 { background: #ff9500; bottom: 20%; left: 10%; animation-delay: -8s; }
+        @keyframes blob-move {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            50% { transform: translate(15vw, 10vh) scale(1.2) rotate(180deg); }
+            100% { transform: translate(-5vw, 20vh) scale(0.9) rotate(360deg); }
+        }
+
+        .theme-glass { --card-bg: rgba(255, 255, 255, 0.03); --text-color: #ffffff; --border-color: rgba(255, 255, 255, 0.1); --accent: #ffffff; --bg-img: none; --app-bg: #000000; --app-text: #ffffff; --app-border: rgba(255, 255, 255, 0.2); --app-accent: #ffffff; }
+        .theme-glass.card-container { background: rgba(255, 255, 255, 0.03) !important; backdrop-filter: blur(60px) !important; -webkit-backdrop-filter: blur(60px) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6) !important; }
+        .theme-glass .top-section, .theme-glass .bottom-section, .theme-glass .center-word, .theme-glass .header-box { background: rgba(255, 255, 255, 0.05) !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important; backdrop-filter: blur(10px); }
+        .theme-glass .word-item { color: #000000 !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(0,0,0,0.4); font-weight: 700 !important; }
+        .theme-glass .zh-translation { color: rgba(255, 255, 255, 0.6) !important; border-top: 1px dashed rgba(255, 255, 255, 0.2) !important; }
+        .theme-glass .def-item { background: rgba(255, 255, 255, 0.05) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; }
+        .theme-glass .def-item div { color: rgba(255, 255, 255, 0.9) !important; }
+        .theme-glass .active-focus, .theme-glass .t-active-focus { background-color: rgba(255, 255, 255, 0.2) !important; color: #ffffff !important; box-shadow: 0 0 20px rgba(255, 255, 255, 0.4) !important; opacity: 1 !important; }
+
+        body.glass-mode { background-color: #000000 !important; }
+        body.glass-mode .config-panel, body.glass-mode .lightbox-close, body.glass-mode .lightbox-counter, body.glass-mode .lightbox-fs-btn, body.glass-mode .lightbox-trans-btn, body.glass-mode .lightbox-menu, body.glass-mode .lightbox-progress { background: rgba(255, 255, 255, 0.03) !important; backdrop-filter: blur(60px) !important; -webkit-backdrop-filter: blur(60px) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6) !important; color: #ffffff !important; }
+        body.glass-mode button, body.glass-mode .icon-btn { background: rgba(255, 255, 255, 0.05) !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; backdrop-filter: blur(10px); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        body.glass-mode button:hover, body.glass-mode .icon-btn:hover { background: rgba(255, 255, 255, 0.15) !important; transform: scale(1.02); }
+        body.glass-mode input, body.glass-mode textarea, body.glass-mode select { background: rgba(255, 255, 255, 0.05); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; }
+        body.glass-mode .category-tab { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.6); }
+        body.glass-mode .category-tab.active { background: #ffffff !important; color: #000000 !important; border-color: #ffffff !important; font-weight: bold; }
+        body.glass-mode .category-tab.is-read { background: rgba(255, 255, 255, 0.15) !important; border-color: rgba(255, 255, 255, 0.3) !important; color: #ffffff !important; }
+        body.glass-mode .menu-item { color: rgba(255, 255, 255, 0.7); border: 1px solid rgba(255, 255, 255, 0.15); }
+        body.glass-mode .menu-item.active { background: #ffffff; color: #000000; border-color: #ffffff; }
+
+        body.glass-mode #typingModal, body.glass-mode #lightbox { background: transparent !important; } body.glass-mode #typingLandscapeCard { background: rgba(255, 255, 255, 0.01) !important; backdrop-filter: blur(80px) !important; -webkit-backdrop-filter: blur(80px) !important; border: none !important; box-shadow: none !important; color: #ffffff !important; }
+        body.glass-mode #typingTreeContainer { background: rgba(255, 255, 255, 0.02) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: inset 0 0 20px rgba(0,0,0,0.2) !important; }
+        body.glass-mode .t-char.t-untyped-placeholder { color: rgba(255,255,255,0.2); }
+        body.glass-mode .t-char { border-bottom: 2px solid rgba(255,255,255,0.2); }
+        body.glass-mode .t-char.t-current { border-bottom-color: #ffffff; color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        body.glass-mode .t-char.t-correct { color: #ffffff; font-weight: bold; }
+        body.glass-mode .zh-translation { color: rgba(255, 255, 255, 0.7) !important; border-top-color: rgba(255, 255, 255, 0.2) !important; }
+        body.glass-mode .def-item .zh-def { color: rgba(255, 255, 255, 0.8) !important; }
+
+                /* 墨水屏模式 (E-Ink) 专属样式全面强制覆盖 */
+        body.ink-mode { --card-w: 750px; --card-h: 1000px; background: #ffffff !important; color: #000000 !important; }
+        body.ink-mode .config-panel { background: #ffffff; border: 2px solid #000; box-shadow: none; color: #000; }
+        body.ink-mode .config-panel h3, body.ink-mode .tips { color: #000; }
+        body.ink-mode button, body.ink-mode .icon-btn { background: #fff !important; color: #000 !important; border: 2px solid #000 !important; }
+        body.ink-mode input, body.ink-mode textarea { background: #fff; color: #000; border: 2px solid #000; }
+        body.ink-mode .category-tab { background: #fff; border: 2px solid #000; color: #000; }
+        body.ink-mode .category-tab.active { background: #000 !important; color: #fff !important; }
+
+        .theme-ink { --card-bg: #ffffff; --text-color: #000000; --border-color: #000000; --accent: #000000; --bg-img: none; --app-bg: #ffffff; --app-text: #000000; --app-border: #000000; --app-accent: #000000; }
+        .theme-ink .top-section, .theme-ink .bottom-section, .theme-ink .center-word, .theme-ink .word-item, .theme-ink .header-box {
+            background: #ffffff !important; color: #000000 !important; border: 2px solid #000000 !important; box-shadow: none !important;
+        }
+        .theme-ink .word-item { color: #000000 !important; }
+        .theme-ink mark.hl { background-color: #e5e5e5 !important; color: #000000 !important; border: 1px solid #000000 !important; box-shadow: none !important; }
+        .theme-ink .line { background-color: #000000 !important; height: 2px !important; }
+        .theme-ink .zh-translation { color: #000000 !important; border-top-color: #000000 !important; }
+        .theme-ink .def-item { background: #ffffff !important; border: 1px solid #000000 !important; }
+        .theme-ink .def-item div { color: #000000 !important; }
+
+        /* 核心适配：当侧边栏开启时，进一步压缩打字模式下的单词树字号防止挤压 */
+        body.sidebar-active #typingTreeContainer .word-item { font-size: 13px !important; padding: 2px 6px !important; }
+        body.sidebar-active #typingTreeContainer .center-word { font-size: 16px !important; padding: 4px 10px !important; }
+
+        /* 核心适配：禁用苹果 iOS 长按弹出系统选择蓝块、拷贝菜单与放大镜 */
+        [data-word], .word-item, .def-item, mark.hl, #typingLandscapeCard, .t-char, .t-zh-sentence {
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+        }
+
+        /* 隐藏翻译功能样式 */
+        body.hide-translation .zh-translation, 
+        body.hide-translation .zh-def { 
+            visibility: hidden; 
+        }
+        /* 隐藏模式下点击或长按区域临时显示，方便自测查看 */
+        body.hide-translation .zh-translation:active, 
+        body.hide-translation .zh-def:active {
+            visibility: visible !important;
+            background: rgba(255, 255, 0, 0.2);
+        }
+        body.ink-mode .lightbox, body.ink-mode .lightbox-inner { background: #fff !important; }
+        body.ink-mode .lightbox-close, body.ink-mode .lightbox-counter, body.ink-mode .lightbox-fs-btn, body.ink-mode .lightbox-trans-btn, body.ink-mode .lightbox-menu {
+            background: #fff; border: 2px solid #000; color: #000;
+        }
+
+        /* 核心修复：彻底解决盲打模式/全屏相册下透明边缘暴露出主页网格的问题 */
+        body:has(#typingModal[style*="display: flex"]) > .config-panel,
+        body:has(#typingModal[style*="display: flex"]) > .category-tabs,
+        body:has(#typingModal[style*="display: flex"]) > .results-grid,
+        body:has(#typingModal[style*="display: flex"]) > hr,
+        body:has(#typingModal[style*="display: flex"]) > #calendarContainer,
+        body:has(#lightbox[style*="display: flex"]) > .config-panel,
+        body:has(#lightbox[style*="display: flex"]) > .category-tabs,
+        body:has(#lightbox[style*="display: flex"]) > .results-grid,
+        body:has(#lightbox[style*="display: flex"]) > hr,
+        body:has(#lightbox[style*="display: flex"]) > #calendarContainer {
+            display: none !important;
+        }
+
+        .card-container {
+            width: var(--card-w); 
+            height: var(--card-h); 
+            flex-shrink: 0;
+            contain: content; 
+            transition: opacity 0.3s ease;
+            background-color: var(--card-bg, #f4f8ff);
+            background-image: var(--bg-img);
+            background-size: 40px 40px;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            display: flex; flex-direction: column;
+            padding: 10px 25px 20px 25px; color: #333;
+            overflow: hidden; 
+            position: relative;
+        }
+
+        .header-box {
+            background: white; border: 2px solid #b0c4de;
+            width: 75%; margin: 0 auto 10px auto; text-align: center;
+            padding: 6px; font-size: 20px; font-weight: bold;
+            color: var(--accent, var(--primary-color)); border-radius: 4px; border-color: var(--border-color);
+            box-shadow: 2px 2px 0px #b0c4de; flex-shrink: 0;
+        }
+
+        .top-section {
+            background: rgba(255, 255, 255, 0.7); padding: 12px 20px;
+            border-radius: 12px; margin-bottom: 12px; margin-top: 52px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03); border: 1px solid rgba(176, 196, 222, 0.3);
+            flex-shrink: 0;
+        }
+        
+        .en-paragraph { 
+            font-weight: 500; 
+            font-size: 17px; 
+            line-height: 2.5; 
+            margin-bottom: 10px; 
+            transition: all 0.2s;
+            text-align: justify; 
+        }
+        .zh-translation { font-size: 15px; color: #555; border-top: 1px dashed #ccc; padding-top: 15px; margin-top: 5px; line-height: 1.6;}
+        
+        .middle-tree {
+            flex-grow: 1; position: relative;
+            min-height: 280px; 
+            width: 100%; margin-bottom: 10px;
+        }
+        
+        .center-word {
+            position: absolute; font-size: 20px; font-weight: bold;
+            background: white; padding: 8px 16px; border: 1px solid #b0c4de;
+            border-radius: 6px; z-index: 100; white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+
+        .word-item {
+            position: absolute; font-size: 16px; color: #333; z-index: 110;
+            background: white; padding: 4px 8px; border-radius: 4px;
+            font-weight: 600; white-space: nowrap;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid #eee;
+        }
+        .line { position: absolute; height: 2px; transform-origin: left center; z-index: 5; }
+
+        .bottom-section {
+            background: rgba(255, 255, 255, 0.85); padding: 20px;
+            border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+            border: 1px solid rgba(176, 196, 222, 0.5); flex-shrink: 0;
+            display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start;
+            min-height: 150px;
+        }
+        
+        .def-item {
+            font-size: 14px; line-height: 1.4; background: rgba(240, 244, 255, 0.6);
+            padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center;
+        }
+
+        .en-paragraph mark.hl {
+            display: inline-block; 
+            margin: 2px 4px;       
+            line-height: 1.2;      
+        }
+
+        mark.hl { border-radius: 4px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); color: #111; }
+        /* 预览相册样式 */
+        .lightbox {
+            position: fixed; top: 0; left: 0; width: 100vw; 
+            height: 100vh; height: 100dvh;
+            background: #000; z-index: 2000;
+            display: none; justify-content: center; align-items: center; touch-action: none;
+            overflow: hidden;
+        }
+        .lightbox-img { width: 100vw; height: 100vh; height: 100dvh; object-fit: contain; transition: transform 0.3s; flex-shrink: 1; min-width: 0; min-height: 0; }
+
+        .lightbox-inner { 
+            position: relative; 
+            width: 100%; 
+            height: 100%; height: 100dvh;
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            background: #000;
+            gap: 0;
+            overflow: hidden;
+            flex-direction: row;
+        }
+        .lightbox-close {
+            position: absolute; top: 8px; right: 8px; color: white;
+            font-size: 12px; background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px;
+            z-index: 2100; cursor: pointer; backdrop-filter: blur(5px);
+        }
+        .lightbox-counter { position: absolute; top: 8px; left: 8px; color: white; font-size: 12px; background: rgba(0,255,65,0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; z-index: 2100; cursor: pointer; backdrop-filter: blur(5px); }
+        
+        .lightbox-loop-btn { position: absolute; top: 8px; right: 152px; color: white; font-size: 12px; background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; z-index: 2100; cursor: pointer; backdrop-filter: blur(5px); }
+        .lightbox-pen-btn { position: absolute; top: 8px; right: 224px; color: white; font-size: 12px; background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; z-index: 2100; cursor: pointer; backdrop-filter: blur(5px); }
+        .lightbox-pen-btn.active { background: #00ff41; color: #000; }
+        .drawing-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2050; pointer-events: none; touch-action: none; }
+        .lightbox-trans-btn { position: absolute; top: 8px; right: 80px; color: white; font-size: 12px; background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; z-index: 2100; cursor: pointer; backdrop-filter: blur(5px); }
+        .lightbox-fs-btn { position: absolute; top: 8px; right: 530px; color: white; font-size: 12px; background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; z-index: 2100; cursor: pointer; backdrop-filter: blur(5px); }
+        .lightbox-menu { position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.98); border: 1px solid #00ff41; border-radius: 8px; max-height: 85vh; width: 96vw; max-width: 1000px; overflow-y: auto; display: none; z-index: 2300; padding: 12px; box-shadow: 0 0 30px rgba(0,255,65,0.5); grid-template-columns: repeat(3, 1fr); gap: 6px; touch-action: auto; }
+        .tablet-only { display: none !important; }
+        @media (min-width: 768px) { .tablet-only { display: flex !important; } }
+        .pen-controls-top { display: flex; align-items: center; gap: 8px; position: absolute; top: 8px; right: 300px; z-index: 2100; height: 32px; }
+        .pen-controls-top .icon-btn-lite { color: white; font-size: 12px; background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; cursor: pointer; backdrop-filter: blur(5px); height: 26px; display: flex; align-items: center; }
+        .pen-controls-top input[type=range] { width: 80px; height: 4px; accent-color: #00ff41; cursor: pointer; }
+        .pen-toolbar { display: none; } /* Removed old bottom toolbar */
+        .pen-toolbar input[type=range] { width: 100px; margin: 0; cursor: pointer; accent-color: #00ff41; }
+        .color-dot { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.2s; }
+        .color-dot.active { border-color: #fff; transform: scale(1.2); }
+        .menu-item { padding: 10px 4px; color: #00ff41; font-size: 11px; cursor: pointer; border: 1px solid rgba(0, 255, 65, 0.2); border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+        .menu-item:hover { background: rgba(0, 255, 65, 0.1); }
+        .menu-item.active { background: #00ff41; color: #000; font-weight: bold; }
+        .lightbox-progress { position: absolute; top: 8px; left: 165px; color: white; font-size: 12px; background: rgba(0, 255, 65, 0.1); border: 1px solid #00ff41; padding: 4px 12px; border-radius: 20px; z-index: 2100; backdrop-filter: blur(5px); display: none; align-items: center; white-space: nowrap; }
+        @media (min-width: 768px) { .lightbox-progress.tablet-only { display: flex !important; } }
+        body.sepia-mode .lightbox-progress { background: #fdfaf3; border: 1px solid #d3c4a9; color: #5b4636; }
+        body.ink-mode .lightbox-progress { background: #fff; border: 2px solid #000; color: #000; }
+
+                /* 分类导航栏样式 */
+        .category-tab.is-read {
+            background: #1b5e20 !important;
+            border-color: #00ff41 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+        }
+        body.sepia-mode .category-tab.is-read {
+            background: #d7ccc8 !important; 
+            border-color: #8d6e63 !important;
+            color: #5b4636 !important;
+        }
+        body.ink-mode .category-tab.is-read {
+            background: #e0e0e0 !important;
+            border-color: #000000 !important;
+            color: #000000 !important;
+            text-decoration: line-through;
+        }
+        .category-tab.is-read::before {
+            content: "✓ ";
+            font-weight: bold;
+        }
+        .category-tabs {
+            width: 100%; max-width: 1200px; margin: 0 auto 15px auto;
+            display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column;
+            gap: 8px; overflow-x: auto; padding: 5px 0 15px 0; scrollbar-width: thin;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .category-tab {
+            background: #000; border: 1px solid #00ff41;
+            color: #00ff41; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+            font-size: 12px; transition: all 0.2s; white-space: nowrap; text-align: center;
+            margin: 2px;
+        }
+        .category-tab.active {
+            background: #00ff41; border-color: #00ff41; color: #000; font-weight: bold;
+        }
+        /* iOS/iPhone 兼容模拟全屏样式优化 */
+        body.is-pseudo-fullscreen {
+            padding: 0 !important;
+            margin: 0 !important;
+            height: 100vh; height: 100dvh;
+            overflow: hidden !important;
+        }
+        body.is-pseudo-fullscreen .top-bar {
+            padding-top: env(safe-area-inset-top);
+        }
+
+        /* --- 双语句子级同步聚焦高亮样式 --- */
+        .en-paragraph, .zh-translation {
+            transition: all 0.3s ease;
+        }
+        /* 当开启句子聚焦时，让卡片内其余未被高亮的句子自动变淡，产生完美的“非破坏性”舞台聚焦效果 */
+        .card-container.has-focus .tts-sentence:not(.active-focus),
+        .card-container.has-focus .zh-sentence:not(.active-focus) {
+            opacity: 0.3;
+        }
+        .tts-sentence, .zh-sentence {
+            transition: all 0.25s ease;
+            border-radius: 4px;
+            padding: 0 2px;
+            display: inline;
+        }
+        /* OLED绿模式下的句子高亮：半透明荧光绿底 + 白字加外发光 */
+        .theme-oled .active-focus, .theme-oled .t-active-focus {
+            background-color: rgba(0, 255, 65, 0.25) !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
+            opacity: 1 !important;
+        }
+        /* 棕褐阅读模式下的句子高亮：柔和深啡色底 */
+        .theme-sepia .active-focus, .theme-sepia .t-active-focus {
+            background-color: rgba(141, 110, 99, 0.25) !important;
+            color: #5b4636 !important;
+            opacity: 1 !important;
+        }
+        /* 墨水屏模式下的句子高亮：反色为纯黑底白字，确保极高对比度 */
+        .theme-ink .active-focus, .theme-ink .t-active-focus {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        /* --- 词典侧边栏样式 (固定宽度优化) --- */
+        #dictSidebar {
+            position: fixed; top: 0; right: -400px; width: 400px; height: 100vh; height: 100dvh;
+            background: var(--app-bg); border-left: 1px solid var(--app-border);
+            z-index: 4000; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.6); visibility: hidden;
+        }
+        #dictSidebar.active { transform: translateX(-400px); visibility: visible; }
+        
+        /* 当侧边栏开启且屏幕比例允许显示时，Lightbox 顶部控制按钮自动左移 400px 避让词典面板 */
+        @media (min-aspect-ratio: 11/10) {
+            body.sidebar-active .lightbox-close { right: 408px !important; transition: right 0.3s ease; }
+            body.sidebar-active .lightbox-trans-btn { right: 480px !important; transition: right 0.3s ease; }
+            body.sidebar-active .lightbox-loop-btn { right: 552px !important; transition: right 0.3s ease; }
+            body.sidebar-active .pen-controls-top { right: 700px !important; transition: right 0.3s ease; }
+            body.sidebar-active .lightbox-fs-btn { right: 930px !important; transition: right 0.3s ease; }
+        }
+
+        @media (max-aspect-ratio: 11/10) {
+            #dictSidebar { display: none !important; }
+        }
+        
+        /* 盲打卡片在侧边栏激活时的响应式挤压，确保左边打字区留有足够空间 */
+        body.sidebar-active #typingLandscapeCard {
+            width: calc(100vw - 400px - 40px) !important; 
+            max-width: none !important;
+            margin: 0 auto 0 20px !important;
+            transition: all 0.3s ease;
+            gap: 20px !important;
+            padding: 20px !important;
+        }
+        body.sidebar-active #typingLandscapeCard > div:first-child { flex: 2 !important; }
+        body.sidebar-active #typingLandscapeCard > div:last-child { flex: 1.5 !important; }
+        
+        /* 屏幕较窄时，盲打模式中间的单词树解释直接隐藏，防止扭曲挤压 */
+        @media (max-width: 1350px) {
+            body.sidebar-active #typingLandscapeCard > div:nth-child(2) {
+                display: none !important;
+            }
+        }
+        .dict-mdx-content font[color="red" i], .dict-mdx-content .red { color: #f43f5e !important; }
+        .dict-mdx-content font[color="blue" i], .dict-mdx-content .blue { color: #60a5fa !important; }
+        .dict-mdx-content font[color="green" i], .dict-mdx-content .green { color: #34d399 !important; }
+        .dict-mdx-content font[color="black" i] { color: var(--app-text) !important; }
+        .theme-sepia .dict-mdx-content font[color="black" i], .theme-ink .dict-mdx-content font[color="black" i] { color: #000 !important; }
+        .theme-glass .dict-mdx-content { backdrop-filter: none; }
+        .dict-mdx-content a { color: var(--app-accent) !important; text-decoration: underline !important; font-weight: bold; }
+        
+        /* 核心修复：为词典侧边栏注入琉璃动态磨砂玻璃质感 */
+        body.glass-mode #dictSidebar,
+        body.glass-mode #dict-content-area {
+            background: transparent !important;
+        }
+        body.glass-mode #dictSidebar {
+            background: rgba(255, 255, 255, 0.03) !important;
+            backdrop-filter: blur(60px) !important;
+            -webkit-backdrop-filter: blur(60px) !important;
+            border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.6) !important;
+        }
+        
+        /* 核心修复：通过滤镜数学映射，自动将浅色词典中极暗的蓝色/红色字体完美映射为深色模式下的柔和亮色，彻底解决对比度太低看不清的问题 */
+        body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content {
+            filter: contrast(0.6) brightness(1.6) saturate(1.5);
+        }
+    </style>
+
+<link rel="manifest" href="manifest.json">
+<script>
+if("service-worker" in navigator) navigator.serviceWorker.register("sw.js");
+window.addEventListener("click", function(){ var d=document.documentElement; (d.requestFullscreen||d.webkitRequestFullScreen).call(d); }, {once:true});
+</script>
+</head>
+<body>
+
+<div class="bg-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="blob blob-4"></div>
+    <div class="blob blob-5"></div>
+</div>
+
+<div class="config-panel">
+    <h3>🧙‍♀️Catchase单词家族点读卡</h3>
+    
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+        <button class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center;" onclick="toggleFullScreen()">⛶ 全屏</button>
+        <button id="themeToggleBtn" class="icon-btn" style="flex: 1.5; min-width: 160px; justify-content: center;" onclick="toggleDarkLight()">🌓 切换深/浅</button>
+        <button id="inkModeBtn" class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center;" onclick="toggleInkMode()">📖 墨水屏</button>
+        <button id="hideTransBtn" class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center;" onclick="toggleHideTranslation()">👁️ 隐藏中文</button>
+        <button class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center;" onclick="forceSync()">🔄 同步</button>
+        <button class="icon-btn" id="syncBtn" style="flex: 1; min-width: 120px; justify-content: center; background: #2196F3 !important; color: white !important; border-color: #0b7dda;" onclick="startAutoSync()">📲 局域网同步</button>
+        <button class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center; background: #e91e63 !important; color: white !important; border-color: #ff4081;" onclick="startRandomMode()">🎲 随机挑战</button>
+        <button class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center; background: #9c27b0 !important; color: white !important; border-color: #ba68c8;" onclick="startTypingMode()">⌨️ 盲打练习</button>
+        <button class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center; background: #607d8b !important; color: white !important;" onclick="document.getElementById('dict-file-picker').click()">📦 导词库</button>
+        <button class="icon-btn" style="flex: 1; min-width: 120px; justify-content: center; background: #455a64 !important; color: white !important;" onclick="openKeyModal()">⚙️ AI设置</button>
+    </div>
+    <div id="dict-status-bar" style="margin-top: 10px; font-size: 11px; text-align: center; opacity: 0.8; color: var(--app-accent);">引擎初始化中...</div>
+    <input type="file" id="dict-file-picker" accept=".json" style="display:none" onchange="importDataToDB(this)">
+
+    <div style="margin-bottom: 12px;">
+        <label style="font-size: 12px; color: #bbb; display: block; margin-bottom: 4px;">🎙️ 英语语音引擎选择 (自动保存)</label>
+        <select id="voiceSelect" onchange="saveVoicePreference()" style="background: #000; color: #00ff41; cursor: pointer;">
+            <option value="">正在加载语音库...</option>
+        </select>
+    </div>
+    
+    
+    <div id="syncStatus" style="margin: 10px 0; padding: 12px; background: rgba(255, 235, 59, 0.1); border: 1px solid rgba(255, 235, 59, 0.3); border-radius: 8px; color: #ffeb3b; font-size: 13px; display: none; text-align: center; line-height: 1.5;"></div>
+    
+    <div class="btn-group">
+        <button id="abortBtn" onclick="abortGeneration()" style="background: #dc3545; display: none;">强制停止生成</button>
+        <button id="downloadBtn" onclick="downloadAllImages()">打包下载所有图片</button>
+        <button id="downloadDataBtn" onclick="downloadAllData()">下载轻量数据(JSONL)</button>
+    </div>
+</div>
+
+<div id="categoryTabs" class="category-tabs"></div>
+
+<div id="resultsGrid" class="results-grid"></div>
+
+<hr style="width:100%; max-width:1200px; border:none; border-top:1px dashed var(--app-border); margin:30px auto 10px auto; opacity:0.5;">
+<div id="calendarContainer" style="width:100%; max-width:1200px; margin:0 auto 25px auto; padding:15px; background:transparent; border:1px solid var(--app-border); border-radius:8px; color:var(--app-text); box-sizing:border-box;">
+    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:15px;">
+        <button id="calModeReadBtn" class="icon-btn" style="background:var(--app-accent); color:#000; font-weight:bold;" onclick="switchCalMode('read')">📖 基础阅读</button>
+        <button id="calModeTypeBtn" class="icon-btn" style="background:transparent; color:var(--app-text); font-weight:bold;" onclick="switchCalMode('type')">⌨️ 盲打练习</button>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <button class="icon-btn" onclick="changeMonth(-1)">◀ 上月</button>
+        <div style="font-weight:bold; font-size:16px; cursor:pointer;" onclick="changeMonth(0)">📅 <span id="calYear"></span>年 <span id="calMonth"></span>月</div>
+        <button class="icon-btn" onclick="changeMonth(1)">下月 ▶</button>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:6px; text-align:center; font-size:13px; margin-bottom:8px; font-weight:bold;">
+        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+    </div>
+    <div id="calGrid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:6px;"></div>
+</div>
+
+<div id="lightbox" class="lightbox">
+    <span class="lightbox-close" onclick="closeLightbox()">✕</span>
+    <span class="lightbox-trans-btn" onclick="event.stopPropagation(); toggleHideTranslation()">👁️ 中文</span>
+    <span class="lightbox-loop-btn" id="loopBtn" onclick="event.stopPropagation(); toggleAutoLoop()">🎯</span>
+    <span class="lightbox-fs-btn tablet-only" onclick="event.stopPropagation(); toggleFullScreen()">⛶ 全屏</span>
+    <div class="tablet-only pen-controls-top" id="penControls">
+        <input type="range" id="penWeight" min="1" max="20" value="3" oninput="currentPenWeight = this.value" title="笔触粗细" style="margin-right: 5px;">
+        <div class="color-dot" style="background: #00ff41; width: 18px; height: 18px; margin-right: 3px;" onclick="setPenColor('#00ff41', this)"></div>
+        <div class="color-dot" style="background: #ff3b3b; width: 18px; height: 18px; margin-right: 3px;" onclick="setPenColor('#ff3b3b', this)"></div>
+        <div class="color-dot" style="background: #ffffff; width: 18px; height: 18px; margin-right: 8px;" onclick="setPenColor('#ffffff', this)"></div>
+        <span class="icon-btn-lite" id="penBtn" onclick="event.stopPropagation(); togglePenMode()">🖌️</span>
+    </div>
+    <canvas id="drawingCanvas" class="drawing-canvas"></canvas>
+
+    <div id="lightboxInner" class="lightbox-inner" onclick="event.stopPropagation()"></div>
+    <div id="lightboxCounter" class="lightbox-counter"></div>
+    <div id="lightboxProgress" class="lightbox-progress tablet-only"></div>
+    <div id="lightboxMenu" class="lightbox-menu"></div>
+</div>
+<div id="stagingArea"></div>
+
+<div id="p2pSyncModal" class="lightbox" style="z-index: 3000; display: none; background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+    <div class="config-panel" style="max-width: 400px; text-align: center; background: #000; border: 2px solid #00ff41; color: #fff; padding: 40px 20px;">
+        <div id="syncIcon" style="font-size: 50px; margin-bottom: 20px; animation: rotate 2s linear infinite;">🔄</div>
+        <h3 id="syncTitle" style="color: #00ff41; margin-bottom: 10px;">正在搜寻同步设备...</h3>
+        <p id="syncDesc" style="font-size: 14px; color: #888; line-height: 1.6;">请确保其他设备也在 10 秒内点击了同步按钮。<br>系统正在局域网内自动匹配学习进度。</p>
+        <div id="syncProgress" style="width: 100%; height: 4px; background: #222; margin-top: 25px; border-radius: 2px; overflow: hidden;">
+            <div id="syncProgressBar" style="width: 100%; height: 100%; background: #00ff41; transition: width 10s linear;"></div>
+        </div>
+        <button class="icon-btn" style="margin-top: 30px; width: 100%; justify-content: center;" onclick="closeP2PSync()">取消</button>
+    </div>
+    <style> @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } </style>
+</div>
+
+
+<div id="typingModal" class="lightbox" style="z-index: 3000; display: none; background: var(--app-bg); flex-direction: column; align-items: center; justify-content: center; padding: 0;">
+    <span class="lightbox-close" onclick="closeTypingMode()" style="border-color: var(--app-border); color: var(--app-text); background: var(--app-bg); font-size: 14px; padding: 6px 16px;">✕ 退出</span>
+    
+    <div id="typingLandscapeCard" class="card-container" onclick="focusTypingInput()" oncontextmenu="return false;" style="width: 100vw; max-width: none; height: 100vh; max-height: none; flex-direction: row; gap: 40px; padding: 40px; border-radius: 0; background: var(--card-bg); overflow: hidden; box-shadow: none; border: none;">
+        
+        
+        <div style="flex: 3; display: flex; flex-direction: column; gap: 15px; border-right: 1px dashed var(--border-color); padding-right: 20px; overflow-y: auto;">
+
+            
+            <div class="top-section" style="display: flex; flex-direction: column; margin-top: 0; box-shadow: none; border: none; background: transparent; padding: 0;">
+                <div id="typingTextContainer" style="font-size: 1.8rem; line-height: 1.6; letter-spacing: 1px; word-break: break-word; font-family: 'Georgia', serif; cursor: text; user-select: none; padding-bottom: 20px;" onclick="focusTypingInput()">
+                    
+                </div>
+                <div id="typingTranslation" class="zh-translation" style="font-size: 1.1rem; line-height: 1.6; padding-top: 15px; border-top: 1px dashed var(--border-color);">
+                    
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 10px; flex-shrink: 0;">
+                <button class="icon-btn" onclick="startTypingMode()" style="padding: 10px 20px; font-size: 14px; background: transparent; border: 1px solid var(--border-color); color: var(--text-color);">⏭️ 随机换一篇</button>
+                <button class="icon-btn" onclick="retryTyping()" style="padding: 10px 20px; font-size: 14px; background: transparent; border: 1px solid var(--border-color); color: var(--text-color);">🔄 重新挑战</button>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 10px;">
+                <h2 id="typingTheme" style="color: var(--accent); margin: 0; font-size: 18px;">Theme</h2>
+                <div style="display: flex; gap: 15px; font-size: 0.9rem; color: var(--text-color);">
+                    <div>Time: <span id="typingTimer" style="font-family: monospace; font-weight: bold;">0s</span></div>
+                    <div>WPM: <span id="typingWpm" style="font-family: monospace; font-weight: bold;">0</span></div>
+                    <div>ACC: <span id="typingAcc" style="font-family: monospace; font-weight: bold;">100%</span></div>
+                </div>
+                <div id="batteryLevel" style="display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: bold;">
+                    <div style="width: 24px; height: 12px; border: 2px solid var(--text-color); border-radius: 2px; position: relative; padding: 1px;">
+                        <div id="batteryBar" style="width: 100%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
+                    </div>
+                    <span id="batteryText">100%</span>
+                </div>
+            </div>
+        </div>
+
+        
+        <div style="flex: 2.2; display: flex; flex-direction: column; gap: 15px; overflow-y: auto;">
+            <div id="typingTreeContainer" class="middle-tree" style="min-height: 350px; flex: 1.2; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(128,128,128,0.05); position: relative;">
+                
+            </div>
+            <div id="typingDefContainer" class="bottom-section" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; min-height: auto; overflow-y: visible; padding: 10px; background: transparent; border: none; box-shadow: none; flex: 0.8;">
+                
+            </div>
+        </div>
+
+    </div>
+    
+    <textarea id="typingHiddenInput" name="blind_typing_area" autocomplete="nope" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="position: fixed; top: 50%; left: 50%; width: 1px; height: 1px; opacity: 0.01; z-index: -1; font-size: 16px; border: none; outline: none; resize: none; background: transparent; transform: translate(-50%, -50%);"></textarea>
+    
+    <style>
+        .t-char { 
+            color: transparent; 
+            border-bottom: 2px solid rgba(128,128,128,0.2); 
+            transition: all 0.1s ease; 
+            position: relative; 
+            display: inline-block;
+            min-width: 0.6em;
+            text-align: center;
+        }
+        .t-char.t-untyped-placeholder { color: rgba(128,128,128,0.15); }
+        .theme-ink .t-char, .theme-sepia .t-char { color: rgba(128,128,128,0.7); }
+        .t-char.t-current { color: var(--text-color); border-bottom-color: var(--accent); animation: t-blink 1s infinite; }
+        .t-char.t-correct { color: var(--accent); }
+        .theme-ink .t-char.t-correct { color: #000; font-weight: bold; }
+        .t-char.t-error { color: #fff; background-color: rgba(255, 51, 51, 0.6); border-radius: 2px; }
+        @keyframes t-blink { 50% { border-bottom-color: transparent; } }
+        
+        /* 针对小屏幕/竖屏时的自适应：切换为垂直布局 */
+        @media (max-width: 900px), (orientation: portrait) {
+            #typingLandscapeCard { flex-direction: column !important; height: 95vh !important; max-height: none !important; overflow-y: auto; }
+            #typingLandscapeCard > div:first-child { border-right: none !important; border-bottom: 1px dashed var(--border-color); padding-right: 0 !important; padding-bottom: 20px; overflow-y: visible; }
+            #typingTreeContainer { min-height: 280px !important; }
+        }
+    </style>
+</div>
+<style>
+    #typingModal {
+        background: var(--app-bg);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    #typingLandscapeCard {
+        background: var(--app-bg);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        box-shadow: none;
+        border: none;
+    }
+    body.glass-mode #typingModal, body.glass-mode #typingLandscapeCard {
+        background: transparent !important;
+    }
+</style>
+
+<script>
+// 新增：从本地存储永久初始化已阅读卡片的唯一 Key 集合
+let readCards = new Set(JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'));
+
+// 新增：根据卡片内被点击的组件，往上追溯并标记该卡片为已阅读状态
+function markCardAsReadByElement(el) {
+    if (!el) return;
+    const card = el.closest('.card-container');
+    if (!card) return;
+    const cardKey = card.getAttribute('data-card-key');
+    if (!cardKey) return;
+
+    // 1. 如果是首次阅读，更新全局已学集合及首页高亮状态
+    if (!readCards.has(cardKey)) {
+        readCards.add(cardKey);
+        localStorage.setItem('catchase_read_cards', JSON.stringify([...readCards]));
+        const homeTabs = document.querySelectorAll('#resultsGrid .category-tab');
+        homeTabs.forEach(tab => {
+            if (tab.getAttribute('data-card-key') === cardKey) {
+                tab.classList.add('is-read');
+            }
+        });
+    }
+
+    // 2. 无论是否曾学过，只要点击学习，均计入“今日学习日历”统计
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    
+    let dailyData = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
+    if (!dailyData[dateStr]) dailyData[dateStr] = [];
+    if (!dailyData[dateStr].includes(cardKey)) {
+        dailyData[dateStr].push(cardKey);
+        localStorage.setItem('catchase_daily_read', JSON.stringify(dailyData));
+        if(typeof renderCalendar === 'function') renderCalendar();
+        updateTodayProgressUI();
+    }
+}
+
+function updateTodayProgressUI() {
+    const el = document.getElementById('lightboxProgress');
+    if (!el) return;
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const dailyData = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
+    const count = dailyData[dateStr] ? dailyData[dateStr].length : 0;
+    el.innerHTML = `🏆 今日已学: ${count} 张`;
+}
+
+let currentCalDate = new Date();
+let currentCalMode = 'read';
+function switchCalMode(mode) {
+    currentCalMode = mode;
+    document.getElementById('calModeReadBtn').style.background = mode === 'read' ? 'var(--app-accent)' : 'transparent';
+    document.getElementById('calModeReadBtn').style.color = mode === 'read' ? '#000' : 'var(--app-text)';
+    document.getElementById('calModeTypeBtn').style.background = mode === 'type' ? 'var(--app-accent)' : 'transparent';
+    document.getElementById('calModeTypeBtn').style.color = mode === 'type' ? '#000' : 'var(--app-text)';
+    renderCalendar();
+}
+
+let typedCards = new Set(JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'));
+function markCardAsTyped(cardKey) {
+    if (!typedCards.has(cardKey)) {
+        typedCards.add(cardKey);
+        localStorage.setItem('catchase_typed_cards', JSON.stringify([...typedCards]));
+    }
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    let dailyData = JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}');
+    if (!dailyData[dateStr]) dailyData[dateStr] = [];
+    // 修改逻辑：只要调用了打字记录，即认为已经练过，无需判断是否打完，同时记录去重
+    if (!dailyData[dateStr].includes(cardKey)) {
+        dailyData[dateStr].push(cardKey);
+        localStorage.setItem('catchase_daily_typing', JSON.stringify(dailyData));
+        if(typeof renderCalendar === 'function') renderCalendar();
+    }
+}
+
+function renderCalendar() {
+    const year = currentCalDate.getFullYear();
+    const month = currentCalDate.getMonth();
+    const calYearEl = document.getElementById('calYear');
+    const calMonthEl = document.getElementById('calMonth');
+    if(!calYearEl || !calMonthEl) return;
+    
+    calYearEl.innerText = year;
+    calMonthEl.innerText = month + 1;
+    
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const dailyDataKey = currentCalMode === 'type' ? 'catchase_daily_typing' : 'catchase_daily_read';
+    const dailyData = JSON.parse(localStorage.getItem(dailyDataKey) || '{}');
+    const calGrid = document.getElementById('calGrid');
+    calGrid.innerHTML = '';
+    
+    for(let i=0; i<firstDay; i++) {
+        calGrid.innerHTML += `<div></div>`;
+    }
+    
+    const isInk = document.body.classList.contains('ink-mode');
+    const isSepia = document.body.classList.contains('sepia-mode');
+    
+    for(let d=1; d<=daysInMonth; d++) {
+        const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const count = dailyData[dateStr] ? dailyData[dateStr].length : 0;
+        
+        const cell = document.createElement('div');
+        let bg = 'transparent';
+        let borderColor = 'var(--app-border)';
+        let opacity = '0.4';
+        
+        if (count > 0) {
+            opacity = '1';
+            borderColor = 'var(--app-accent)';
+            if (isInk) { bg = '#e0e0e0'; }
+            else if (isSepia) { bg = 'rgba(141, 110, 99, 0.2)'; }
+            else { bg = 'rgba(0, 255, 65, 0.1)'; }
+        }
+        
+        cell.style.cssText = `background:${bg}; border:1px solid ${borderColor}; opacity:${opacity}; border-radius:6px; padding:6px 0; text-align:center; cursor:pointer; min-height:50px; display:flex; flex-direction:column; justify-content:center; align-items:center; transition:all 0.2s; box-sizing:border-box;`;
+        
+        const countHtml = count > 0 ? `<div style="font-size:11px; color:var(--app-accent); font-weight:bold; margin-top:4px;">${count} 张</div>` : `<div style="font-size:11px; opacity:0.5; margin-top:4px;">-</div>`;
+        
+        cell.innerHTML = `<div style="font-size:14px; font-weight:bold;">${d}</div>${countHtml}`;
+        
+        cell.onclick = () => {
+            if (count > 0) {
+                renderReviewCards(dateStr, dailyData[dateStr], currentCalMode);
+            }
+        };
+        
+        calGrid.appendChild(cell);
+    }
+}
+
+function changeMonth(delta) {
+    if (delta === 0) { currentCalDate = new Date(); }
+    else { currentCalDate.setMonth(currentCalDate.getMonth() + delta); }
+    renderCalendar();
+}
+
+async function renderReviewCards(dateStr, cardKeys, mode = 'read') {
+    document.querySelectorAll('.category-tab').forEach(tab => tab.classList.remove('active'));
+    currentCategory = `Review-${dateStr}`;
+    const resultsGrid = document.getElementById('resultsGrid');
+    const stagingArea = document.getElementById('stagingArea');
+    resultsGrid.innerHTML = '';
+    stagingArea.innerHTML = '';
+    
+    const filteredData = allImportedData.filter(d => cardKeys.includes(`${d.c}_${d.theme}`));
+    
+    if (filteredData.length === 0) {
+        alert("找不到该日期的卡片数据，可能已被覆盖或删除。");
+        return;
+    }
+    
+    rawResultsData = filteredData;
+    generatedImagesData = new Array(filteredData.length).fill(null);
+    generatedDOMs = new Array(filteredData.length).fill(null);
+
+    const title = document.createElement('div');
+    title.style.width = '100%';
+    title.style.textAlign = 'center';
+    title.style.margin = '5px 0 15px 0';
+    title.style.fontSize = '16px';
+    title.style.fontWeight = 'bold';
+    title.style.color = 'var(--app-accent)';
+    const titleModeStr = mode === 'type' ? '⌨️ 盲打复习' : '📚 复习模式';
+    title.innerHTML = `${titleModeStr}：${dateStr} (共 ${filteredData.length} 张)<br><span style="font-size:12px; opacity:0.7; font-weight:normal;">点击上方任意分类退出复习模式</span>`;
+    resultsGrid.appendChild(title);
+
+    filteredData.forEach((data, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'category-tab is-read';
+        wrapper.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+        wrapper.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        wrapper.innerText = data.theme;
+        const cardKey = `${data.c}_${data.theme}`;
+        wrapper.setAttribute('data-card-key', cardKey);
+        wrapper.onclick = async () => {
+            if (mode === 'type') {
+                startTypingMode(data);
+                return;
+            }
+            if (!generatedDOMs[i]) {
+                const cardDOM = createBaseCardDOM(data);
+                stagingArea.appendChild(cardDOM);
+                await applyAutoFitLogic(cardDOM);
+                drawDynamicTree(cardDOM, data);
+                generatedDOMs[i] = cardDOM.cloneNode(true);
+                const canvas = await html2canvas(cardDOM, { scale: 2, backgroundColor: null });
+                generatedImagesData[i] = { theme: data.theme, dataUrl: canvas.toDataURL('image/png') };
+                cardDOM.remove();
+            }
+            openLightbox(i);
+        };
+        resultsGrid.appendChild(wrapper);
+    });
+}
+
+
+
+function toggleFullScreen() {
+    const doc = document;
+    const de = doc.documentElement;
+    const isFull = doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement;
+
+    const syncUI = () => {
+        setTimeout(() => {
+            window.scrollTo(0, 0);
+            if (document.getElementById('lightbox').style.display === 'flex') {
+                updateLightboxContent();
+            }
+        }, 350);
+    };
+
+    if (!isFull) {
+        const req = de.requestFullscreen || de.webkitRequestFullscreen || de.mozRequestFullScreen || de.msRequestFullscreen;
+        if (req) {
+            req.call(de).then(syncUI).catch(err => {
+                doc.body.classList.add('is-pseudo-fullscreen');
+                syncUI();
+            });
+        } else {
+            doc.body.classList.add('is-pseudo-fullscreen');
+            syncUI();
+        }
+    } else {
+        const exit = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+        if (exit) {
+            exit.call(doc).then(syncUI).catch(() => {
+                doc.body.classList.remove('is-pseudo-fullscreen');
+                syncUI();
+            });
+        } else {
+            doc.body.classList.remove('is-pseudo-fullscreen');
+            syncUI();
+        }
+    }
+}
+
+let generatedImagesData = [];
+let rawResultsData = [];
+window.onload = initApp;
+window.addEventListener('resize', () => {
+    if (document.getElementById('lightbox').style.display === 'flex') updateLightboxContent();
+});
+let generatedDOMs = [];
+let currentGalleryIndex = 0;
+let cardsPerView = 1;
+let allImportedData = [];
+let currentCategory = 'All';
+let touchStartX = 0;
+let isAborted = false;
+let currentRenderId = 0;
+let currentGlobalTheme = localStorage.getItem('app_theme') || 'oled';
+let isInkMode = localStorage.getItem('is_ink_mode') === 'true';
+let isHideTranslation = localStorage.getItem('hide_translation') === 'true';
+let isAutoLoop = false;
+let isPenMode = false;
+let drawingCtx = null;
+let isDrawing = false;
+let currentPenColor = '#00ff41';
+let currentPenWeight = 3;
+let currentSpeechId = 0; // 核心修复：全局双语朗读版本追踪计数器
+
+// 升级版跨平台唤端引擎：完美适配 iOS 独立 App 安全策略
+// 升级版跨平台唤端引擎：增加 Android 分屏焦点强刷安全锁
+window.callEudic = function(word, el) {
+    if (!word) return;
+    if (el) markCardAsReadByElement(el);
+    
+    const isTabletLandscape = (window.innerWidth / window.innerHeight) > 1.3;
+    if (isTabletLandscape && typeof openDictSidebar === 'function') {
+        openDictSidebar(word);
+    } else {
+        window.location.href = `eudic://dict/${word}`;
+    }
+};
+
+function populateVoiceList() {
+    if (typeof speechSynthesis === 'undefined') return;
+    const voices = speechSynthesis.getVoices();
+    const voiceSelect = document.getElementById('voiceSelect');
+    const savedVoice = localStorage.getItem('app_tts_voice');
+    
+    // 筛选英文语音
+    const enVoices = voices.filter(v => v.lang.startsWith('en'));
+    if (enVoices.length === 0 && voices.length > 0) { // 如果没有纯英，展示全部
+        voiceSelect.innerHTML = voices.map(v => `<option value="${v.voiceURI}" ${v.voiceURI === savedVoice ? 'selected' : ''}>${v.name} (${v.lang})</option>`).join('');
+    } else {
+        voiceSelect.innerHTML = enVoices.map(v => `<option value="${v.voiceURI}" ${v.voiceURI === savedVoice ? 'selected' : ''}>${v.name} (${v.lang})</option>`).join('');
+    }
+}
+
+if (speechSynthesis.onvoiceschanged !== undefined) {
+    speechSynthesis.onvoiceschanged = populateVoiceList;
+}
+
+function saveVoicePreference() {
+    const voiceSelect = document.getElementById('voiceSelect');
+    localStorage.setItem('app_tts_voice', voiceSelect.value);
+}
+
+function speakTTS(text, event, sIdx, btnEl) {
+    if (event && event.target) markCardAsReadByElement(event.target);
+    if(event) event.stopPropagation();
+    if(!text) return;
+    
+    // 1. 核心版本计数，废弃因快速切换产生的异步幽灵回调
+    const mySpeechId = ++currentSpeechId; 
+    
+    // 2. 【核心大修】：强制结束并立刻强行恢复通道！
+    // 专门用来击碎长按单词调起欧路分屏时，Android 系统由于剥夺音频焦点导致的 Chrome 深度睡死状态
+    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.resume) {
+        window.speechSynthesis.resume();
+    }
+
+    // 全局重置所有卡片的聚焦状态，防止样式残留
+    document.querySelectorAll('.card-container').forEach(c => {
+        c.classList.remove('has-focus');
+        c.querySelectorAll('.active-focus').forEach(el => el.classList.remove('active-focus'));
+    });
+
+    // 如果传入了句子索引（说明是点击了句子，而非单个单词），开启舞台聚焦
+    let currentCard = null;
+    if (sIdx !== undefined && btnEl) {
+        currentCard = btnEl.closest('.card-container');
+        if (currentCard) {
+            currentCard.classList.add('has-focus');
+            currentCard.querySelectorAll(`.tts-sentence[data-index="${sIdx}"], .zh-sentence[data-index="${sIdx}"]`)
+                       .forEach(el => el.classList.add('active-focus'));
+        }
+    }
+
+    const u = new SpeechSynthesisUtterance(text);
+    
+    // 3. 【核心大修】：将语音实例强行挂载到全局 window 对象上
+    // 防止长句子在分屏焦点切换、重新建立系统 TTS 通道时，被浏览器的垃圾回收(GC)机制当成闲置变数误杀
+    window.currentSpeechUtterance = u;
+
+    const voiceSelect = document.getElementById('voiceSelect');
+    const voices = speechSynthesis.getVoices();
+    const selectedVoice = voices.find(v => v.voiceURI === voiceSelect.value);
+    if (selectedVoice) u.voice = selectedVoice;
+    u.lang = 'en-US';
+    u.rate = 0.9;
+    
+    // 朗读完毕后释放状态
+    u.onend = () => {
+        if (mySpeechId !== currentSpeechId) return; 
+        
+        if (currentCard) {
+            currentCard.classList.remove('has-focus');
+            currentCard.querySelectorAll('.active-focus').forEach(el => el.classList.remove('active-focus'));
+        }
+        if (isAutoLoop) {
+            setTimeout(() => {
+                if (isAutoLoop && mySpeechId === currentSpeechId) speakTTS(text, null, sIdx, btnEl);
+            }, 500);
+        }
+    };
+
+    // 异常与打断事件保护
+    u.onerror = () => {
+        if (mySpeechId !== currentSpeechId) return; 
+        
+        if (currentCard) {
+            currentCard.classList.remove('has-focus');
+            currentCard.querySelectorAll('.active-focus').forEach(el => el.classList.remove('active-focus'));
+        }
+    };
+
+    // 4. 正式推入引擎执行
+    window.speechSynthesis.speak(u);
+}
+
+async function startRandomMode() {
+    if (!allImportedData || allImportedData.length === 0) return alert("数据正在加载，请稍候...");
+    currentCategory = 'Random';
+    // 随机洗牌全量数据
+    rawResultsData = [...allImportedData].sort(() => Math.random() - 0.5);
+    generatedImagesData = new Array(rawResultsData.length).fill(null);
+    generatedDOMs = new Array(rawResultsData.length).fill(null);
+    openLightbox(0);
+}
+
+function getWordAtPoint(x, y, target) {
+    if (!target) return "";
+    if (target.classList.contains('hl')) {
+        return target.innerText.replace(/[.,/#!$%^&*;:{}=\-_`~()"']/g,"").trim();
+    }
+    if (document.caretRangeFromPoint) {
+        const range = document.caretRangeFromPoint(x, y);
+        if (range) {
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            range.expand('word');
+            const word = sel.toString().trim().replace(/[.,/#!$%^&*;:{}=\-_`~()"']/g,"");
+            sel.removeAllRanges();
+            return word;
+        }
+    }
+    return "";
+}
+
+function handlePCWordRightClick(e) {
+    // 移除 !isPC 限制，允许移动端/平板的 Pen 按钮（模拟右键）以及电脑右键触发点读
+    e.preventDefault();
+    e.stopPropagation();
+
+    let word = "";
+    if (e.target.classList.contains('hl')) {
+        word = e.target.innerText;
+    } else {
+        if (document.caretRangeFromPoint) {
+            const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+            const sel = window.getSelection();
+            if (range) {
+                range.expand('word');
+                sel.removeAllRanges();
+                sel.addRange(range);
+                word = sel.toString().trim();
+                sel.removeAllRanges();
+            }
+        }
+    }
+    
+    word = word.replace(/[.,/#!$%^&*;:{}=\-_`~()"']/g,"");
+    if (word && word.length > 0) {
+        speakTTS(word);
+    }
+}
+
+function toggleAutoLoop() {
+    isAutoLoop = !isAutoLoop;
+    const btn = document.getElementById('loopBtn');
+    btn.innerText = isAutoLoop ? '🔁' : '🎯';
+    if (!isAutoLoop) window.speechSynthesis.cancel();
+}
+
+const HighlighterColors = [
+    '#a1f2c2', '#d4b8ff', '#fcf3a2', '#ffb3ba', '#bae1ff', 
+    '#ffdfba', '#fcc8e8', '#e2f0cb', '#dec3c3', '#cbaacb'
+];
+
+
+
+async function startBatchGeneration() {
+    isAborted = false;
+    currentRenderId++;
+    document.getElementById('abortBtn').style.display = 'block';
+    const rawTopic = document.getElementById('topicInput').value;
+    const generateBtn = document.getElementById('generateBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resultsGrid = document.getElementById('resultsGrid');
+    const stagingArea = document.getElementById('stagingArea');
+
+    if(!rawTopic) return alert("请输入内容！");
+    
+    const topics = rawTopic.split(/;|；|\n/).map(t => t.trim()).filter(t => t);
+    if(topics.length === 0) return alert("请输入至少一个关键词！");
+
+    generateBtn.disabled = true;
+    generateBtn.innerText = 'AI与排版引擎正在运算...';
+    downloadBtn.style.display = 'none';
+    document.getElementById('downloadDataBtn').style.display = 'none';
+    resultsGrid.innerHTML = ''; 
+    stagingArea.innerHTML = '';
+    generatedImagesData = new Array(topics.length).fill(null);
+    generatedDOMs = new Array(topics.length).fill(null);
+
+    topics.forEach((topic, index) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper';
+        wrapper.id = `wrapper-${index}`;
+        wrapper.innerHTML = `<div class="status-text">正在构思<br><b>${topic}</b><br>自适应排版中...</div>`;
+        resultsGrid.appendChild(wrapper);
+    });
+
+    // 离线模式：直接尝试解析输入内容
+    try {
+        const data = JSON.parse(rawTopic);
+        allImportedData = [data];
+        await renderCategory('All');
+    } catch (e) {
+        alert("无法识别输入格式，请输入有效的 JSON 对象。");
+    }
+
+    generateBtn.disabled = false;
+    generateBtn.innerText = '生成精美卡片';
+    document.getElementById('abortBtn').style.display = 'none';
+    if (generatedImagesData.some(item => item !== null)) {
+        downloadBtn.style.display = 'block';
+        document.getElementById('downloadDataBtn').style.display = 'block';
+    }
+}
+
+function abortGeneration() {
+    if(confirm("确定要强制停止生成吗？已完成的卡片将保留。")) {
+        isAborted = true;
+        document.getElementById('generateBtn').disabled = false;
+        document.getElementById('generateBtn').innerText = '生成精美卡片';
+        document.getElementById('abortBtn').style.display = 'none';
+        if (generatedImagesData.some(item => item !== null)) {
+            document.getElementById('downloadBtn').style.display = 'block';
+            document.getElementById('downloadDataBtn').style.display = 'block';
+        }
+    }
+}
+
+
+
+function createBaseCardDOM(data) {
+    const card = document.createElement('div');
+    const theme = isInkMode ? 'ink' : currentGlobalTheme;
+    card.className = `card-container theme-${theme}`;
+    card.setAttribute('data-card-key', `${data.c}_${data.theme}`);
+
+    const topSec = document.createElement('div');
+    topSec.className = 'top-section';
+
+    // [核心大修]：单次扫描正则替换引擎
+    // 1. 保留原始索引并按长度降序排序（防止"train"优先匹配导致"training"被截断）
+    const sortedWords = data.words.map((w, index) => ({...w, originalIndex: index}))
+                                  .sort((a, b) => b.word.length - a.word.length);
+    
+    // 2. 将10个单词拼接成一个巨大的正在表达式: \b(word1|word2|word3)\b
+    const escapedWords = sortedWords.map(w => w.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const combinedRegex = new RegExp(`\\b(${escapedWords.join('|')})\\b`, 'gi');
+
+    // 3. 将英文段落按句子切分，外层包裹发音 span，内部进行单词高亮！
+    const enSentences = data.paragraph_en.match(/[^.?!]+[.?!]*/g) || [data.paragraph_en];
+    let enHTML = '';
+    enSentences.forEach((sentence, idx) => {
+        const highlightedSentence = sentence.replace(combinedRegex, (match) => {
+            const lowerMatch = match.toLowerCase();
+            const foundWord = sortedWords.find(w => lowerMatch === w.word.toLowerCase());
+            if (foundWord) {
+                const color = HighlighterColors[foundWord.originalIndex % HighlighterColors.length];
+                return `<mark class="hl" style="background-color: ${color};">${match}</mark>`;
+            }
+            return match;
+        });
+        const cleanText = sentence.replace(/'/g, "\\'").replace(/"/g, "&quot;").trim();
+        enHTML += `<span class="tts-sentence" data-index="${idx}" onclick="speakTTS('${cleanText}', event, ${idx}, this)" style="cursor:pointer;">${highlightedSentence}</span>`;
+    });
+
+    // 新增：将中文翻译同步按句子切分，建立完全一致的索引映射
+    const zhSentences = data.paragraph_zh.match(/[^。！？]+[。！？]*/g) || [data.paragraph_zh];
+    let zhHTML = '';
+    zhSentences.forEach((sentence, idx) => {
+        zhHTML += `<span class="zh-sentence" data-index="${idx}">${sentence}</span>`;
+    });
+
+    topSec.innerHTML = `
+        <div class="en-paragraph" oncontextmenu="handlePCWordRightClick(event)">${enHTML}</div>
+        <div class="zh-translation">翻译：${zhHTML}</div>
+    `;
+    card.appendChild(topSec);
+
+    const midSec = document.createElement('div');
+    midSec.className = 'middle-tree';
+    card.appendChild(midSec);
+
+    const botSec = document.createElement('div');
+    botSec.className = 'bottom-section';
+    let defHTML = '';
+    data.words.forEach((item, i) => {
+        const color = HighlighterColors[i % HighlighterColors.length];
+        const cleanWord = item.word.replace(/'/g, "\\'");
+        defHTML += `<div class="def-item" data-word="${cleanWord}" style="flex-direction: column; align-items: flex-start; cursor:pointer; transition: transform 0.2s;" onclick="speakTTS('${cleanWord}', event)" oncontextmenu="window.callEudic('${cleanWord}', this); return false;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+            <div style="margin-bottom: 2px;"><mark class="hl" style="background-color: ${color}; font-weight: 600; margin-right: 6px;">${item.word}</mark><span style="font-size: 12px; color: #888;">${item.phonetic || ''}</span></div>
+            <div class="zh-def" style="color: #444;">${item.definition}</div>
+        </div>`;
+    });
+    botSec.innerHTML = defHTML;
+    card.appendChild(botSec);
+
+    return card;
+}
+
+async function applyAutoFitLogic(cardDOM) {
+    // 提高初始字号以填充上方空间，缩小中下间距
+    let fontEn = 25; 
+    let fontZh = 20;
+    let fontDef = 16;
+    let lhEn = 2.2; 
+
+    const enPara = cardDOM.querySelector('.en-paragraph');
+    const zhPara = cardDOM.querySelector('.zh-translation');
+    const botSec = cardDOM.querySelector('.bottom-section');
+    const limitH = isInkMode ? 980 : 1070;
+
+    // [注释：卡片上中下的上部分中英文段翻译]
+    // 初始应用较大字号
+    enPara.style.fontSize = `${fontEn}px`;
+    enPara.style.lineHeight = `${lhEn}`;
+    zhPara.style.fontSize = `${fontZh}px`;
+    botSec.querySelectorAll('.def-item').forEach(el => el.style.fontSize = `${fontDef}px`);
+
+    // 动态检测：如果总高度超过卡片高度，则逐步缩小字号
+    while (cardDOM.scrollHeight > limitH && fontEn > 14) {
+        fontEn -= 0.4;
+        fontZh -= 0.3;
+        fontDef -= 0.2;
+        
+        if (lhEn > 1.6) lhEn -= 0.03;
+
+        enPara.style.fontSize = `${fontEn}px`;
+        enPara.style.lineHeight = `${lhEn}`;
+        zhPara.style.fontSize = `${fontZh}px`;
+        
+        const defItems = botSec.querySelectorAll('.def-item');
+        defItems.forEach(el => {
+            el.style.fontSize = `${Math.max(12, fontDef)}px`;
+        });
+    }
+}
+
+function drawDynamicTree(cardDOM, data) {
+    const midSec = cardDOM.querySelector('.middle-tree');
+    const midWidth = midSec.offsetWidth;
+    const midHeight = midSec.offsetHeight;
+    
+    const centerX = midWidth / 2;
+    const centerY = midHeight / 2;
+    const radius = Math.min(midWidth, midHeight) / 2 - 45;
+
+    const center = document.createElement('div');
+    center.className = 'center-word';
+    center.innerText = `${data.pos || ''}. ${data.theme}`;
+    center.style.left = `${centerX}px`;
+    center.style.top = `${centerY}px`;
+    center.style.transform = `translate(-50%, -50%)`;
+    midSec.appendChild(center);
+
+    data.words.forEach((item, i) => {
+        const color = HighlighterColors[i % HighlighterColors.length];
+        const angleDeg = (i * (360 / data.words.length)) - 90;
+        const angleRad = angleDeg * (Math.PI / 180);
+        
+        const x = centerX + Math.cos(angleRad) * radius;
+        const y = centerY + Math.sin(angleRad) * radius;
+
+        const el = document.createElement('div');
+        const cleanWordAttr = item.word.replace(/'/g, "\\'");
+        el.className = 'word-item';
+        el.style.backgroundColor = color; 
+        el.style.cursor = 'pointer';
+        el.setAttribute('data-word', cleanWordAttr);
+        el.setAttribute('onclick', `speakTTS('${cleanWordAttr}', event)`);
+        el.setAttribute('oncontextmenu', `window.callEudic('${cleanWordAttr}'); return false;`);
+        el.style.userSelect = 'none'; 
+        el.style.webkitUserSelect = 'none';
+        el.innerText = item.word;
+        
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+        
+        let tx = -50;
+        if (cos > 0.3) tx = 0; else if (cos < -0.3) tx = -100;
+        let ty = -50;
+        if (sin > 0.7) ty = 0; else if (sin < -0.7) ty = -100;
+
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.transform = `translate(${tx}%, ${ty}%)`;
+        midSec.appendChild(el);
+
+        const line = document.createElement('div');
+        line.className = 'line';
+        line.style.backgroundColor = color; 
+        line.style.left = `${centerX}px`;
+        line.style.top = `${centerY}px`;
+        const lineLength = radius - 35;
+        line.style.width = `${lineLength}px`;
+        line.style.transform = `rotate(${angleDeg}deg) translate(35px, 0)`; 
+        midSec.appendChild(line);
+    });
+}
+
+async function changeTheme(val) {
+    currentGlobalTheme = val;
+    localStorage.setItem('app_theme', val);
+    applyThemeToBody();
+    if (currentCategory) await renderCategory(currentCategory);
+}
+
+function toggleDarkLight() {
+    let nextTheme = 'oled';
+    if (currentGlobalTheme === 'oled') nextTheme = 'sepia';
+    else if (currentGlobalTheme === 'sepia') nextTheme = 'glass';
+    else nextTheme = 'oled';
+    changeTheme(nextTheme);
+}
+
+async function toggleInkMode() {
+    isInkMode = !isInkMode;
+    localStorage.setItem('is_ink_mode', isInkMode);
+    applyThemeToBody();
+    if (currentCategory) await renderCategory(currentCategory);
+}
+
+function toggleHideTranslation() {
+    isHideTranslation = !isHideTranslation;
+    localStorage.setItem('hide_translation', isHideTranslation);
+    applyThemeToBody();
+}
+
+function applyThemeToBody() {
+    document.body.classList.remove('ink-mode', 'sepia-mode', 'glass-mode');
+    const root = document.documentElement;
+    const themeClass = isInkMode ? 'theme-ink' : `theme-${currentGlobalTheme}`;
+    
+    const tempDiv = document.createElement('div');
+    tempDiv.className = themeClass;
+    document.body.appendChild(tempDiv);
+    const style = getComputedStyle(tempDiv);
+    
+    const bgColor = style.getPropertyValue('--app-bg').trim() || '#000000';
+    const textColor = style.getPropertyValue('--app-text').trim() || '#00ff41';
+    const borderColor = style.getPropertyValue('--app-border').trim() || '#00ff41';
+    const accentColor = style.getPropertyValue('--app-accent').trim() || '#00ff41';
+
+    root.style.setProperty('--app-bg', bgColor);
+    root.style.setProperty('--app-text', textColor);
+    root.style.setProperty('--app-border', borderColor);
+    root.style.setProperty('--app-accent', accentColor);
+    document.body.removeChild(tempDiv);
+
+    const dynamicElements = ['voiceSelect', 'themeToggleBtn'];
+    dynamicElements.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.background = bgColor;
+            el.style.color = textColor;
+            el.style.borderColor = borderColor;
+        }
+    });
+
+    if (isInkMode) {
+        document.body.classList.add('ink-mode');
+    } else if (currentGlobalTheme === 'sepia') {
+        document.body.classList.add('sepia-mode');
+    } else if (currentGlobalTheme === 'glass') {
+        document.body.classList.add('glass-mode');
+    }
+
+    if (isHideTranslation) {
+        document.body.classList.add('hide-translation');
+        document.getElementById('hideTransBtn').innerText = '👁️ 显示中文';
+    } else {
+        document.body.classList.remove('hide-translation');
+        document.getElementById('hideTransBtn').innerText = '👁️ 隐藏中文';
+    }
+    
+    const btn = document.getElementById('themeToggleBtn');
+    if(btn) {
+        if (currentGlobalTheme === 'oled') btn.innerText = '🌃 深色模式 (绿)';
+        else if (currentGlobalTheme === 'sepia') btn.innerText = '📜 棕褐模式 (亮)';
+        else if (currentGlobalTheme === 'glass') btn.innerText = '✨ 琉璃模式 (幻)';
+    }
+    document.getElementById('inkModeBtn').innerText = isInkMode ? '📖 墨水屏:开' : '📖 墨水屏:关';
+
+    if(typeof renderCalendar === 'function') renderCalendar();
+}
+
+async function initApp() {
+    applyThemeToBody();
+    populateVoiceList();
+    const syncStatus = document.getElementById('syncStatus');
+    try {
+        allImportedData = await localforage.getItem('word_cards_db');
+        
+        if (!allImportedData || allImportedData.length === 0) {
+            syncStatus.style.display = 'block';
+            syncStatus.innerHTML = '✨ 首次访问：正在从 GitHub 同步 20,000 条核心数据...<br><span style="font-size:11px; opacity:0.8;">(约 27MB，仅首次加载需要消耗流量)</span>';
+            
+            const files = ['./data/part1.jsonl', './data/part2.jsonl'];
+            let combinedData = [];
+            
+            for (const file of files) {
+                const response = await fetch(file);
+                const text = await response.text();
+                const lines = text.split('\n').filter(line => line.trim());
+                
+                lines.forEach(line => {
+                    try {
+                        const parsed = JSON.parse(line);
+                        combinedData.push({
+                            c: parsed.c || '未分类',
+                            theme: parsed.t,
+                            pos: parsed.pos || '',
+                            ui: parsed.ui || 'modern',
+                            words: parsed.w.map(word => ({
+                                word: word.n, phonetic: word.p, definition: word.d
+                            })),
+                            paragraph_en: parsed.en,
+                            paragraph_zh: parsed.zh
+                        });
+                    } catch (err) {}
+                });
+            }
+            
+            allImportedData = combinedData;
+            await localforage.setItem('word_cards_db', allImportedData);
+            syncStatus.innerText = '✅ 同步完成！数据已持久化到本地离线空间。';
+            setTimeout(() => syncStatus.style.display = 'none', 3000);
+        }
+
+        const categories = new Set(allImportedData.map(d => d.c));
+        const categoryList = Array.from(categories).sort();
+        renderCategoryTabs(categoryList);
+        if (categoryList.length > 0) await renderCategory(categoryList[0]);
+        
+        if(typeof renderCalendar === 'function') renderCalendar();
+
+    } catch (error) {
+        console.error('Initialization error:', error);
+        syncStatus.style.display = 'block';
+        syncStatus.innerText = '❌ 数据同步失败，请检查网络或路径配置。';
+    }
+}
+
+async function forceSync() {
+    if(confirm("确定要强制重新同步云端数据吗？\n这将清空本地数据库并刷新页面。")) {
+        await localforage.removeItem('word_cards_db');
+        location.reload();
+    }
+}
+
+function renderCategoryTabs(categories) {
+    const tabsContainer = document.getElementById('categoryTabs');
+    tabsContainer.innerHTML = '';
+    
+    categories.forEach((cat, index) => {
+        const tab = document.createElement('div');
+        // 默认激活第一个分类
+        tab.className = index === 0 ? 'category-tab active' : 'category-tab';
+        tab.innerText = cat;
+        tab.onclick = () => { setActiveTab(tab); renderCategory(cat); };
+        tabsContainer.appendChild(tab);
+    });
+}
+
+function setActiveTab(clickedTab) {
+    document.querySelectorAll('.category-tab').forEach(tab => tab.classList.remove('active'));
+    clickedTab.classList.add('active');
+}
+
+async function renderCategory(category) {
+    const localRenderId = ++currentRenderId;
+    currentCategory = category;
+    const resultsGrid = document.getElementById('resultsGrid');
+    const stagingArea = document.getElementById('stagingArea');
+    resultsGrid.innerHTML = '';
+    stagingArea.innerHTML = '';
+    
+    const filteredData = category === 'All' ? allImportedData : allImportedData.filter(d => d.c === category);
+    rawResultsData = filteredData;
+    generatedImagesData = new Array(filteredData.length).fill(null);
+    generatedDOMs = new Array(filteredData.length).fill(null);
+
+    filteredData.forEach((data, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'category-tab';
+        wrapper.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+        wrapper.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        wrapper.innerText = data.theme;
+        const cardKey = `${data.c}_${data.theme}`;
+        wrapper.setAttribute('data-card-key', cardKey);
+        if (readCards.has(cardKey)) {
+            wrapper.classList.add('is-read');
+        }
+        wrapper.onclick = async () => {
+            if (!generatedDOMs[i]) {
+                const cardDOM = createBaseCardDOM(data);
+                stagingArea.appendChild(cardDOM);
+                await applyAutoFitLogic(cardDOM);
+                drawDynamicTree(cardDOM, data);
+                generatedDOMs[i] = cardDOM.cloneNode(true);
+                const canvas = await html2canvas(cardDOM, { scale: 2, backgroundColor: null });
+                generatedImagesData[i] = { theme: data.theme, dataUrl: canvas.toDataURL('image/png') };
+                cardDOM.remove();
+            }
+            openLightbox(i);
+        };
+        resultsGrid.appendChild(wrapper);
+    });
+    
+    if (generatedImagesData.some(item => item !== null)) {
+        document.getElementById('downloadBtn').style.display = 'block';
+        document.getElementById('downloadDataBtn').style.display = 'block';
+    }
+}
+
+async function updateAllCardsTheme() { /* 多主题选择器已移除 */ }
+
+// --- 相册功能函数 ---
+function openLightbox(index) {
+    if (rawResultsData.length === 0) return;
+    // 第一视角优先：点击的卡片设为起始索引（最左侧）
+    currentGalleryIndex = index;
+    document.getElementById('lightbox').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    updateLightboxContent();
+}
+
+function clearDrawingCanvas() {
+    const canvas = document.getElementById('drawingCanvas');
+    if (canvas && drawingCtx) {
+        drawingCtx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function setPenColor(color, el) {
+    currentPenColor = color;
+    document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('active'));
+    if(el) el.classList.add('active');
+}
+
+function togglePenMode() {
+    isPenMode = !isPenMode;
+    const btn = document.getElementById('penBtn');
+    const canvas = document.getElementById('drawingCanvas');
+    btn.style.background = isPenMode ? '#00ff41' : 'rgba(0, 255, 65, 0.2)';
+    btn.style.color = isPenMode ? '#000' : '#fff';
+    canvas.style.pointerEvents = isPenMode ? 'auto' : 'none';
+    if (isPenMode) {
+        initDrawingCanvas();
+        setPenColor(isInkMode ? '#000000' : (currentGlobalTheme === 'sepia' ? '#5b4636' : '#00ff41'), document.querySelector('.color-dot'));
+    }
+}
+
+function initDrawingCanvas() {
+    const canvas = document.getElementById('drawingCanvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    drawingCtx = canvas.getContext('2d');
+    
+    // 引入独立的手指长按/短按状态跟踪器
+    let fingerTimer = null;
+    let isLongPressTriggered = false;
+    let startX = 0;
+    let startY = 0;
+    let targetElement = null;
+
+    const getLineWidth = (p) => {
+        const pressure = (p > 0) ? p : 0.5;
+        return pressure * (currentPenWeight * 2) + 1;
+    };
+
+    // 1. 按下事件监听
+    canvas.onpointerdown = (e) => {
+        // 【电磁笔模式】仅允许 S-Pen 书写批注
+        if (isPenMode && e.pointerType === 'pen') {
+            isDrawing = true;
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(e.clientX, e.clientY);
+            drawingCtx.lineWidth = getLineWidth(e.pressure || 0.5);
+            drawingCtx.strokeStyle = currentPenColor;
+            drawingCtx.lineJoin = 'round';
+            drawingCtx.lineCap = 'round';
+            e.preventDefault();
+            e.stopPropagation();
+        } 
+        // 【手指触摸模式】处理点读与长按穿透
+        else if (isPenMode) {
+            isLongPressTriggered = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            // 瞬间穿透画布获取底层的真实 DOM 节点
+            canvas.style.pointerEvents = 'none';
+            targetElement = document.elementFromPoint(e.clientX, e.clientY);
+            canvas.style.pointerEvents = 'auto';
+
+            if (targetElement) {
+                // 开启 500ms 纯净长按判定定时器 (支持中下部单词与上部文段单词)
+                fingerTimer = setTimeout(() => {
+                    isLongPressTriggered = true;
+                    let word = "";
+                    const wordNode = targetElement.closest('[data-word]');
+                    const sentenceNode = targetElement.closest('.tts-sentence');
+                    if (wordNode) {
+                        word = wordNode.getAttribute('data-word');
+                    } else if (sentenceNode && targetElement.closest('.en-paragraph')) {
+                        word = getWordAtPoint(e.clientX, e.clientY, targetElement);
+                    }
+                    if (word && window.callEudic) {
+                        window.callEudic(word, targetElement);
+                    }
+                }, 500);
+            }
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
+
+    // 2. 移动事件监听（加入防抖容错）
+    canvas.onpointermove = (e) => {
+        if (isDrawing && e.pointerType === 'pen') {
+            drawingCtx.lineTo(e.clientX, e.clientY);
+            drawingCtx.lineWidth = getLineWidth(e.pressure || 0.5);
+            drawingCtx.stroke();
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(e.clientX, e.clientY);
+            e.preventDefault();
+            e.stopPropagation();
+        } 
+        // 手指在长按过程中如果发生大幅度拖拽，则取消长按（允许 12 像素内的肉肉手微小抖动）
+        else if (isPenMode && fingerTimer) {
+            const moveX = Math.abs(e.clientX - startX);
+            const moveY = Math.abs(e.clientY - startY);
+            if (moveX > 12 || moveY > 12) {
+                clearTimeout(fingerTimer);
+                fingerTimer = null;
+            }
+        }
+    };
+
+    // 3. 抬起事件监听（核心时序控制）
+    canvas.onpointerup = (e) => {
+        if (e.pointerType === 'pen') {
+            isDrawing = false;
+            drawingCtx.beginPath();
+        } else if (isPenMode) {
+            // 手指抬起时，立刻掐断定时器
+            if (fingerTimer) {
+                clearTimeout(fingerTimer);
+                fingerTimer = null;
+            }
+            
+            // 重要：只有在 500ms 内抬起、且从未触发过长按弹窗时，才判定为“普通短按”
+            if (!isLongPressTriggered && targetElement) {
+                // 【漏洞修复】：同时判定点击的目标是否属于单词（data-word）或长句子（.tts-sentence）
+                const wordNode = targetElement.closest('[data-word]');
+                const sentenceNode = targetElement.closest('.tts-sentence');
+                
+                if (wordNode || sentenceNode) {
+                    targetElement.click(); // 完美允许穿透点击长句子
+                }
+            }
+            targetElement = null;
+        }
+    };
+
+    // 4. 异常中断处理
+    canvas.onpointercancel = () => {
+        isDrawing = false;
+        if (fingerTimer) {
+            clearTimeout(fingerTimer);
+            fingerTimer = null;
+        }
+        targetElement = null;
+    };
+}
+
+async function updateLightboxContent() {
+    clearDrawingCanvas();
+    const inner = document.getElementById('lightboxInner');
+    
+    const sidebar = document.getElementById('dictSidebar');
+    const isSidebarActive = sidebar && sidebar.classList.contains('active');
+    const sidebarW = isSidebarActive ? 400 : 0;
+    
+    const winW = window.innerWidth - sidebarW;
+    const winH = window.innerHeight;
+    const winRatio = winW / winH;
+    const cardW = isInkMode ? 750 : 500;
+    const cardH = isInkMode ? 1000 : 1083;
+
+    inner.style.width = isSidebarActive ? `calc(100% - ${sidebarW}px)` : '100%';
+    inner.style.marginRight = isSidebarActive ? `${sidebarW}px` : '0';
+
+    // 自适应计算同屏卡片数
+    const cardRatio = cardW / cardH;
+    if (isSidebarActive) {
+        cardsPerView = (winRatio > cardRatio * 1.5) ? 2 : 1;
+    } else {
+        if (winRatio > cardRatio * 3.5) cardsPerView = 4;
+        else if (winRatio > cardRatio * 2.5) cardsPerView = 3;
+        else if (winRatio > cardRatio * 1.5) cardsPerView = 2;
+        else cardsPerView = 1;
+    }
+
+    const gap = 0;
+    const totalCardWidth = cardsPerView * cardW;
+    let finalScale = Math.min(winW / totalCardWidth, winH / cardH);
+    // 确保在高度受限时，缩放比例能让卡片尽可能填满垂直空间
+    if (winH / cardH < winW / totalCardWidth) {
+        finalScale = winH / cardH;
+    }
+
+    // 批量触发当前组的懒加载
+    const indices = [];
+    for (let i = 0; i < cardsPerView; i++) {
+        indices.push((currentGalleryIndex + i) % rawResultsData.length);
+    }
+    await triggerLazyLoadBatch(indices);
+
+    inner.innerHTML = '';
+    
+    // 渲染卡片组：通过包装层消除 transform:scale 留下的空白间隙
+    indices.forEach(idx => {
+        const domNode = generatedDOMs[idx];
+        if (domNode) {
+            const cardW = isInkMode ? 750 : 500;
+            const cardH = isInkMode ? 1000 : 1083;
+            const wrapper = document.createElement('div');
+            wrapper.style.width = (cardW * finalScale) + 'px';
+            wrapper.style.height = (cardH * finalScale) + 'px';
+            wrapper.style.display = 'flex';
+            wrapper.style.justifyContent = 'center';
+            wrapper.style.alignItems = 'center';
+            wrapper.style.flexShrink = '0';
+
+            const displayNode = domNode.cloneNode(true);
+            displayNode.style.transform = `scale(${finalScale})`;
+            displayNode.style.transformOrigin = 'center top';
+            displayNode.style.flexShrink = '0';
+            displayNode.style.margin = '0';
+            // 修正全屏下位置偏移，确保顶端对齐
+            wrapper.style.alignItems = 'flex-start';
+            wrapper.style.paddingTop = '0';
+            
+            wrapper.appendChild(displayNode);
+            inner.appendChild(wrapper);
+        }
+    });
+
+    // 导航箭头
+    const arrowColor = isInkMode ? '#000' : (currentGlobalTheme === 'sepia' ? '#5b4636' : (currentGlobalTheme === 'oled' ? '#00ff41' : 'var(--app-accent)'));
+    const arrowShadow = (currentGlobalTheme === 'ink' || currentGlobalTheme === 'sepia') ? 'none' : '0 0 10px #000';
+    
+    const navPrev = document.createElement('div');
+    navPrev.innerHTML = '❮';
+    navPrev.style.cssText = `position:absolute; left:20px; color:${arrowColor}; font-size:50px; cursor:pointer; z-index:2200; text-shadow:${arrowShadow};`;
+    navPrev.onclick = (e) => { e.stopPropagation(); prevImage(); };
+    
+    const navNext = document.createElement('div');
+    navNext.innerHTML = '❯';
+    navNext.style.cssText = `position:absolute; right:20px; color:${arrowColor}; font-size:50px; cursor:pointer; z-index:2200; text-shadow:${arrowShadow};`;
+    navNext.onclick = (e) => { e.stopPropagation(); nextImage(); };
+    
+    inner.appendChild(navPrev);
+    inner.appendChild(navNext);
+
+    const counter = document.getElementById('lightboxCounter');
+    const startIdx = currentGalleryIndex + 1;
+    const endIdx = Math.min(currentGalleryIndex + cardsPerView, rawResultsData.length);
+    
+    updateTodayProgressUI();
+    if (currentCategory === 'Random') {
+        counter.innerText = `🎲 随机模式 [${startIdx === endIdx ? startIdx : `${startIdx}-${endIdx}`}]`;
+        counter.onclick = null;
+        counter.style.cursor = 'default';
+    } else {
+        counter.innerText = (startIdx === endIdx ? startIdx : `${startIdx}-${endIdx}`) + ` / ${rawResultsData.length} ☰`;
+        counter.onclick = (e) => { e.stopPropagation(); toggleLightboxMenu(); };
+        counter.style.cursor = 'pointer';
+    }
+}
+
+function toggleLightboxMenu() {
+    const menu = document.getElementById('lightboxMenu');
+    if (menu.style.display === 'grid') {
+        menu.style.display = 'none';
+    } else {
+        menu.innerHTML = '';
+        // 阻止触摸事件向上传递，防止目录滑动时触发相册翻页
+        menu.ontouchstart = e => e.stopPropagation();
+        menu.ontouchmove = e => e.stopPropagation();
+        menu.ontouchend = e => e.stopPropagation();
+        menu.onmousedown = e => e.stopPropagation();
+
+        rawResultsData.forEach((data, idx) => {
+            const item = document.createElement('div');
+            item.className = `menu-item ${idx === currentGalleryIndex ? 'active' : ''}`;
+            item.innerText = `${idx + 1}. ${data.theme}`;
+            item.onclick = (e) => {
+                e.stopPropagation();
+                currentGalleryIndex = idx;
+                triggerLazyLoad(idx);
+                updateLightboxContent();
+                menu.style.display = 'none';
+            };
+            menu.appendChild(item);
+        });
+        menu.style.display = 'grid';
+    }
+}
+
+function closeLightbox() {
+    if(isPenMode) togglePenMode();
+    document.getElementById('lightbox').style.display = 'none';
+    document.getElementById('lightboxMenu').style.display = 'none';
+    document.body.style.overflow = 'auto';
+
+    // 修复：如果从随机模式退出，恢复当前激活分类的数据映射，防止点击普通卡片索引错乱
+    if (currentCategory === 'Random') {
+        const activeTab = document.querySelector('.category-tab.active');
+        if (activeTab) {
+            const cat = activeTab.innerText;
+            currentCategory = cat;
+            const filteredData = cat === 'All' ? allImportedData : allImportedData.filter(d => d.c === cat);
+            rawResultsData = filteredData;
+            generatedImagesData = new Array(filteredData.length).fill(null);
+            generatedDOMs = new Array(filteredData.length).fill(null);
+        }
+    }
+}
+
+function nextImage(e) {
+    if (e) e.stopPropagation();
+    // 按组跳转
+    currentGalleryIndex = (currentGalleryIndex + cardsPerView) % rawResultsData.length;
+    updateLightboxContent();
+}
+
+function prevImage(e) {
+    if (e) e.stopPropagation();
+    // 按组往回跳，处理负数取余
+    currentGalleryIndex = (currentGalleryIndex - cardsPerView + rawResultsData.length) % rawResultsData.length;
+    updateLightboxContent();
+}
+
+async function triggerLazyLoad(index) {
+    if (!generatedDOMs[index] && rawResultsData[index]) {
+        const data = rawResultsData[index];
+        const cardDOM = createBaseCardDOM(data);
+        document.getElementById('stagingArea').appendChild(cardDOM);
+        await applyAutoFitLogic(cardDOM);
+        drawDynamicTree(cardDOM, data);
+        generatedDOMs[index] = cardDOM.cloneNode(true);
+        const canvas = await html2canvas(cardDOM, { scale: 2, backgroundColor: null });
+        generatedImagesData[index] = { theme: data.theme, dataUrl: canvas.toDataURL('image/png') };
+        cardDOM.remove();
+    }
+}
+
+async function triggerLazyLoadBatch(indices) {
+    const tasks = indices.map(idx => triggerLazyLoad(idx));
+    await Promise.all(tasks);
+}
+
+// 键盘与滑动监听
+window.addEventListener('keydown', (e) => {
+    if (document.getElementById('lightbox').style.display === 'flex') {
+        if (e.key === 'ArrowRight') nextImage();
+        if (e.key === 'ArrowLeft') prevImage();
+        if (e.key === 'Escape') closeLightbox();
+    }
+});
+
+// 已移除基于手势的左右滑动翻页功能，防止移动端误触。
+
+function downloadAllData() {
+    const validData = rawResultsData.filter(item => item !== null);
+    if(validData.length === 0) return;
+
+    const uiTheme = "oled";
+    
+    let jsonlContent = "";
+    validData.forEach(data => {
+        const compressed = {
+            t: data.theme,
+            pos: data.pos,
+            ui: uiTheme,
+            w: data.words.map(w => ({
+                n: w.word,
+                p: w.phonetic,
+                d: w.definition
+            })),
+            en: data.paragraph_en,
+            zh: data.paragraph_zh
+        };
+        jsonlContent += JSON.stringify(compressed) + "\n";
+    });
+
+    const blob = new Blob([jsonlContent], { type: "application/octet-stream" });
+    saveAs(blob, "单词卡片纯文本数据.jsonl");
+}
+
+// 终极修复：全平台普通浏览模式手势代理引擎
+// 彻底解决 Android Chrome 分屏流下，从欧路切回时文本 span 的原生 click 事件被浏览器吞噬的硬伤
+document.addEventListener('DOMContentLoaded', () => {
+    let globalFingerTimer = null;
+    let globalLongPressActive = false;
+    let gStartX = 0, gStartY = 0;
+    let gTargetElement = null;
+
+    const lbInner = document.getElementById('lightboxInner');
+    if (!lbInner) return;
+
+    lbInner.addEventListener('touchstart', (e) => {
+        if (isPenMode) return; // 如果开启了批注模式，交由 Canvas 层的指针事件全权处理
+        
+        const clientX = e.touches[0].clientX;
+        const clientY = e.touches[0].clientY;
+        
+        // 智能识别：既寻找单词块，也寻找长句子 span
+        gTargetElement = e.target.closest('[data-word]') || e.target.closest('.tts-sentence');
+        if (!gTargetElement) return;
+        
+        globalLongPressActive = false;
+        gStartX = clientX;
+        gStartY = clientY;
+        
+        // 启动 500ms 长按欧路唤醒时序 (支持中下部单词 [data-word] 与上部文段单词)
+        globalFingerTimer = setTimeout(() => {
+            globalLongPressActive = true;
+            let word = "";
+            if (gTargetElement.hasAttribute('data-word')) {
+                word = gTargetElement.getAttribute('data-word');
+            } else if (gTargetElement.closest('.en-paragraph')) {
+                word = getWordAtPoint(clientX, clientY, e.target);
+            }
+            if (word && window.callEudic) {
+                // 唤起前强制清理全局选择集与高亮蓝块，防止内核焦点锁死
+                window.getSelection().removeAllRanges();
+                if(document.activeElement) document.activeElement.blur();
+                window.callEudic(word, gTargetElement);
+            }
+        }, 500);
+    }, { passive: true });
+
+    lbInner.addEventListener('touchmove', (e) => {
+        if (isPenMode || !globalFingerTimer) return;
+        const moveX = Math.abs(e.touches[0].clientX - gStartX);
+        const moveY = Math.abs(e.touches[0].clientY - gStartY);
+        // 允许 12px 的脂肪形变微小手抖，超过则判定为翻页滑动，掐断长按
+        if (moveX > 12 || moveY > 12) {
+            clearTimeout(globalFingerTimer);
+            globalFingerTimer = null;
+        }
+    }, { passive: true });
+
+    lbInner.addEventListener('touchend', (e) => {
+        if (isPenMode) return;
+        
+        if (globalFingerTimer) {
+            clearTimeout(globalFingerTimer);
+            globalFingerTimer = null;
+        }
+        
+        if (gTargetElement) {
+            if (globalLongPressActive) {
+                // 如果是长按唤醒，直接拦截后续动作，防止松手时误触发单词读音
+                e.preventDefault();
+                e.stopPropagation();
+            } else {
+                // 🚀【核心高能修复】：如果是普通短按点击，不管你是单词还是长句子，
+                // 坚决不走浏览器脆弱的原生 click 转发，直接由 JS 原生驱动强制触发 .click() 
+                // 并调用 preventDefault 阻断 Chrome 内核的无理拦截，实现 100% 秒开点读！
+                e.preventDefault();
+                e.stopPropagation();
+                gTargetElement.click();
+            }
+        }
+        gTargetElement = null;
+    }, { passive: false }); // 必须为 false 允许 preventDefault 拦截系统默认吞选行为
+});
+
+// 新增全局窗口焦点重置监听：只要你从左侧欧路词典把手递回右侧 Chrome，瞬间洗净所有的选择残留
+window.addEventListener('focus', () => {
+    try {
+        window.getSelection().removeAllRanges();
+        if (document.activeElement && typeof document.activeElement.blur === 'function' && document.activeElement.id !== 'typingHiddenInput') {
+            document.activeElement.blur();
+        }
+        if (document.getElementById('typingModal') && document.getElementById('typingModal').style.display === 'flex') {
+            setTimeout(focusTypingInput, 300);
+        }
+    } catch(err) {}
+});
+
+async function downloadAllImages() {
+    const validImages = generatedImagesData.filter(item => item !== null);
+    if(validImages.length === 0) return;
+
+    if(validImages.length === 1) {
+        const link = document.createElement('a');
+        link.download = `批注单词卡-${validImages[0].theme}.png`;
+        link.href = validImages[0].dataUrl;
+        link.click();
+    } else {
+        const zip = new JSZip();
+        validImages.forEach(img => {
+            const base64Data = img.dataUrl.replace(/^data:image\/(png|jpg);base64,/, "");
+            zip.file(`批注单词卡-${img.theme}.png`, base64Data, {base64: true});
+        });
+        try {
+            const content = await zip.generateAsync({type:"blob"});
+            saveAs(content, "批注单词卡批量下载.zip");
+        } catch(e) {
+            console.error("ZIP打包失败", e);
+            alert("文件打包失败，请检查浏览器权限。");
+        }
+    }
+}
+
+// --- P2P 设备互通同步引擎 ---
+// 全局 PeerJS 配置：引入国内通畅的 STUN 穿透服务器，解决跨网络打洞问题
+const peerConfig = {
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.aliyun.com:19302' },
+            { urls: 'stun:stun.tencentcloud.com:19302' },
+            { urls: 'stun:stun.l.google.com:19302' }
+        ]
+    }
+};
+let peer = null;
+let p2pConn = null;
+let qrStream = null;
+let qrVideoInterval = null;
+
+let syncTimer = null;
+function startAutoSync() {
+    document.getElementById('p2pSyncModal').style.display = 'flex';
+    const bar = document.getElementById('syncProgressBar');
+    const title = document.getElementById('syncTitle');
+    const desc = document.getElementById('syncDesc');
+    
+    // 核心修复：每次开启同步前强制重置 UI 状态到初始值
+    title.innerText = "正在搜寻同步设备...";
+    desc.innerHTML = "请确保其他设备也在 10 秒内点击了同步按钮。<br>系统正在局域网内自动匹配学习进度。";
+    bar.style.backgroundColor = '#00ff41';
+    bar.style.width = '100%';
+    setTimeout(() => bar.style.width = '0%', 10);
+    
+    // 基于当前时间的 10 秒区间生成共享 ID (10秒内点击即同组)
+    const timeBucket = Math.floor(Date.now() / 10000);
+    const syncRoomId = `catchase_sync_v2_${timeBucket}`;
+    
+    if (peer) { try { peer.destroy(); } catch(e){} peer = null; }
+
+    // 尝试作为主机建立房间
+    peer = new Peer(syncRoomId, peerConfig);
+    
+    peer.on('open', (id) => {
+        console.log("As Host:", id);
+        title.innerText = "已开启同步等待...";
+        peer.on('connection', (conn) => {
+            title.innerText = "🤝 已发现设备，同步中...";
+            conn.on('open', () => {
+                conn.send({ type: 'sync_data', payload: getSyncData() });
+            });
+            conn.on('data', (data) => {
+                if(data.type === 'sync_data') {
+                    mergeSyncData(data.payload);
+                    title.innerText = "✅ 同步合并成功！";
+                    setTimeout(closeP2PSync, 1500);
+                }
+            });
+        });
+    });
+
+    peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+            // 房间已被占用，作为客户端连接
+            console.log("As Client connecting to:", syncRoomId);
+            peer = new Peer(peerConfig);
+            peer.on('open', () => {
+                const conn = peer.connect(syncRoomId);
+                conn.on('open', () => {
+                    title.innerText = "🔗 已连接设备，同步中...";
+                    conn.send({ type: 'sync_data', payload: getSyncData() });
+                });
+                conn.on('data', (data) => {
+                    if(data.type === 'sync_data') {
+                        mergeSyncData(data.payload);
+                        title.innerText = "✅ 同bs同步合并成功！";
+                        setTimeout(closeP2PSync, 1500);
+                    }
+                });
+            });
+        } else {
+            title.innerText = "❌ 同步失败: " + err.type;
+        }
+    });
+
+    syncTimer = setTimeout(() => {
+        if (document.getElementById('p2pSyncModal').style.display === 'flex' && !title.innerText.includes('✅')) {
+            title.innerText = "⌛ 未发现其他同步设备";
+            setTimeout(closeP2PSync, 2000);
+        }
+    }, 10000);
+}
+
+function closeP2PSync() {
+    document.getElementById('p2pSyncModal').style.display = 'none';
+    if(syncTimer) clearTimeout(syncTimer);
+    if(p2pConn) { try { p2pConn.close(); } catch(e){} p2pConn = null; }
+    if(peer) { try { peer.destroy(); } catch(e){} peer = null; }
+}
+
+function getSyncData() {
+    return {
+        readCards: JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'),
+        dailyRead: JSON.parse(localStorage.getItem('catchase_daily_read') || '{}'),
+        typedCards: JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'),
+        dailyTyping: JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}')
+    };
+}
+
+function mergeSyncData(remoteData) {
+    let localCards = new Set(JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'));
+    if (remoteData.readCards) remoteData.readCards.forEach(c => localCards.add(c));
+    localStorage.setItem('catchase_read_cards', JSON.stringify([...localCards]));
+    readCards = localCards;
+    
+    let localDaily = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
+    if (remoteData.dailyRead) {
+        for(let date in remoteData.dailyRead) {
+            if(!localDaily[date]) localDaily[date] = [];
+            let ds = new Set(localDaily[date]);
+            remoteData.dailyRead[date].forEach(c => ds.add(c));
+            localDaily[date] = [...ds];
+        }
+    }
+    localStorage.setItem('catchase_daily_read', JSON.stringify(localDaily));
+    
+    let localTyped = new Set(JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'));
+    if (remoteData.typedCards) remoteData.typedCards.forEach(c => localTyped.add(c));
+    localStorage.setItem('catchase_typed_cards', JSON.stringify([...localTyped]));
+    typedCards = localTyped;
+    
+    let localDailyTyping = JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}');
+    if (remoteData.dailyTyping) {
+        for(let date in remoteData.dailyTyping) {
+            if(!localDailyTyping[date]) localDailyTyping[date] = [];
+            let ds = new Set(localDailyTyping[date]);
+            remoteData.dailyTyping[date].forEach(c => ds.add(c));
+            localDailyTyping[date] = [...ds];
+        }
+    }
+    localStorage.setItem('catchase_daily_typing', JSON.stringify(localDailyTyping));
+
+    if(typeof renderCalendar === 'function') renderCalendar();
+    if(typeof updateTodayProgressUI === 'function') updateTodayProgressUI();
+    
+    const homeTabs = document.querySelectorAll('#resultsGrid .category-tab');
+    homeTabs.forEach(tab => {
+        if (readCards.has(tab.getAttribute('data-card-key'))) {
+            tab.classList.add('is-read');
+        }
+    });
+}
+
+
+
+// ==================== 融合版横屏打字练习模块 ====================
+// 注：此Diff基于最初始未修改的HTML源文件生成
+let typeTimeElapsed = 0;
+let typeTimer = null;
+let isTypingPlaying = false;
+let typingTargetText = "";
+let isTypingComposing = false;
+let typingCurrentData = null;
+let typingSentenceBounds = [];
+let currentTypingSentenceIndex = -1;
+let typingLastInputLength = 0;
+let errorAudioCtx = null;
+
+function playErrorSound() {
+    try {
+        if (!errorAudioCtx) errorAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (errorAudioCtx.state === 'suspended') errorAudioCtx.resume();
+        const osc = errorAudioCtx.createOscillator();
+        const gain = errorAudioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, errorAudioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, errorAudioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, errorAudioCtx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(errorAudioCtx.destination);
+        osc.start();
+        osc.stop(errorAudioCtx.currentTime + 0.1);
+    } catch(e) {}
+}
+
+function checkAndReadNextWord(index) {
+    if (index >= typingTargetText.length) return;
+    const charAtIdx = typingTargetText[index];
+    const prevChar = index > 0 ? typingTargetText[index - 1] : ' ';
+    if (/[a-zA-Z0-9]/.test(charAtIdx) && !/[a-zA-Z0-9'-]/.test(prevChar)) {
+        let wordEnd = index;
+        while (wordEnd < typingTargetText.length && /[a-zA-Z0-9'-]/.test(typingTargetText[wordEnd])) {
+            wordEnd++;
+        }
+        speakTTS(typingTargetText.substring(index, wordEnd));
+    }
+}
+
+function startTypingMode(specificData = null) {
+    if (!allImportedData || allImportedData.length === 0) return alert("数据正在加载，请稍候...");
+    
+    typingCurrentData = specificData || allImportedData[Math.floor(Math.random() * allImportedData.length)];
+    
+    // 提取纯文本（保留原始标点以供打字练习）
+    const rawEn = typingCurrentData.paragraph_en.replace(/<[^>]*>?/gm, '').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+    typingTargetText = rawEn;
+    
+    // 计算中英文句子边界映射
+    const enSentences = rawEn.match(/[^.?!]+[.?!]*/g) || [rawEn];
+    const zhSentences = typingCurrentData.paragraph_zh.match(/[^。！？]+[。！？]*/g) || [typingCurrentData.paragraph_zh];
+
+    // 核心改造：单次扫描将段落中属于单词家族的核心衍生词转换为由“＿”组成的填空下划线暗示，强制激活检索机制
+    let processedTargetText = rawEn;
+    const sortedFamilyWords = [...typingCurrentData.words].sort((a,b) => b.word.length - a.word.length);
+    sortedFamilyWords.forEach(fw => {
+        const regex = new RegExp(`\\b${fw.word}\\b`, 'gi');
+        processedTargetText = processedTargetText.replace(regex, (match) => '＿'.repeat(match.length));
+    });
+    typingSentenceBounds = [];
+    let currentIndex = 0;
+    enSentences.forEach(s => {
+        const len = s.length;
+        typingSentenceBounds.push({ start: currentIndex, end: currentIndex + len - 1 });
+        currentIndex += len;
+    });
+    currentTypingSentenceIndex = -1;
+
+    // 填充UI与基础信息
+    document.getElementById('typingTheme').innerText = `🎯 ${typingCurrentData.theme}`;
+    
+    let zhHTML = '<b style="margin-right: 8px;">翻译：</b>';
+    zhSentences.forEach((sentence, idx) => {
+        zhHTML += `<span class="t-zh-sentence" style="transition: all 0.3s; border-radius: 4px; padding: 2px; display: inline;">${sentence}</span>`;
+    });
+    document.getElementById('typingTranslation').innerHTML = zhHTML;
+    
+    // 生成右侧释义列表 (改为网格两列自适应)
+    let defHTML = '';
+    typingCurrentData.words.forEach((item, i) => {
+        const color = HighlighterColors[i % HighlighterColors.length];
+        const cleanWord = item.word.replace(/'/g, "\\'");
+        defHTML += `<div class="def-item" data-word="${cleanWord}" style="flex-direction: column; align-items: flex-start; cursor:pointer; width: 100%; box-sizing: border-box;" onclick="speakTTS('${cleanWord}')">
+            <div style="margin-bottom: 2px;"><mark class="hl" style="background-color: ${color}; font-weight: 600; margin-right: 6px; color: #111;">${item.word}</mark><span style="font-size: 12px; opacity: 0.8;">${item.phonetic || ''}</span></div>
+            <div class="zh-def" style="opacity: 0.9; font-size: 13px;">${item.definition}</div>
+        </div>`;
+    });
+    document.getElementById('typingDefContainer').innerHTML = defHTML;
+
+    // 绘制右侧动态单词树
+    const treeContainer = document.getElementById('typingTreeContainer');
+    treeContainer.innerHTML = '';
+    // 使用 requestAnimationFrame 确保容器尺寸已渲染后再画树
+    document.getElementById('typingModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    
+    // 同步卡片主题全局色系
+    const cardEl = document.getElementById('typingLandscapeCard');
+    cardEl.className = `card-container theme-${isInkMode ? 'ink' : currentGlobalTheme}`;
+    
+    setTimeout(() => {
+        drawTypingTree(typingCurrentData, treeContainer);
+    }, 50);
+
+    retryTyping();
+}
+
+// 独立的树绘制逻辑，适配横屏右侧区域
+function drawTypingTree(data, container) {
+    container.innerHTML = '';
+    const midWidth = container.offsetWidth;
+    const midHeight = container.offsetHeight;
+    const centerX = midWidth / 2;
+    const centerY = midHeight / 2;
+    // 智能动态半径：侧边栏开启时更激进地缩小半径，防止单词溢出容器
+    const isSidebar = document.body.classList.contains('sidebar-active');
+    const radius = Math.min(midWidth / 2 - (isSidebar ? 100 : 65), midHeight / 2 - 50);
+    const centerGap = isSidebar ? 22 : 30;
+
+    const center = document.createElement('div');
+    center.className = 'center-word';
+    center.innerText = `${data.pos || ''}. ${data.theme}`;
+    center.style.left = `${centerX}px`;
+    center.style.top = `${centerY}px`;
+    center.style.transform = `translate(-50%, -50%)`;
+    container.appendChild(center);
+
+    data.words.forEach((item, i) => {
+        const color = HighlighterColors[i % HighlighterColors.length];
+        const angleDeg = (i * (360 / data.words.length)) - 90;
+        const angleRad = angleDeg * (Math.PI / 180);
+        
+        const x = centerX + Math.cos(angleRad) * radius;
+        const y = centerY + Math.sin(angleRad) * radius;
+
+        const el = document.createElement('div');
+        const cleanWordAttr = item.word.replace(/'/g, "\\'");
+        el.className = 'word-item';
+        el.style.backgroundColor = color; 
+        el.style.cursor = 'pointer';
+        el.style.color = '#111';
+        el.setAttribute('data-word', cleanWordAttr);
+        el.setAttribute('onclick', `speakTTS('${cleanWordAttr}')`);
+        el.innerText = item.word;
+        
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+        
+        let tx = -50;
+        if (cos > 0.3) tx = 0; else if (cos < -0.3) tx = -100;
+        let ty = -50;
+        if (sin > 0.7) ty = 0; else if (sin < -0.7) ty = -100;
+
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.transform = `translate(${tx}%, ${ty}%)`;
+        container.appendChild(el);
+
+        const line = document.createElement('div');
+        line.className = 'line';
+        line.style.backgroundColor = color; 
+        line.style.left = `${centerX}px`;
+        line.style.top = `${centerY}px`;
+        const lineLength = radius - centerGap;
+        line.style.width = `${lineLength}px`;
+        line.style.transform = `rotate(${angleDeg}deg) translate(${centerGap}px, 0)`; 
+        container.appendChild(line);
+    });
+}
+
+function retryTyping() {
+    clearInterval(typeTimer);
+    typeTimer = null;
+    isTypingPlaying = false;
+    typeTimeElapsed = 0;
+    isTypingComposing = false;
+    currentTypingSentenceIndex = -1;
+    typingLastInputLength = 0;
+    
+    document.querySelectorAll('.t-zh-sentence').forEach(el => {
+        el.classList.remove('t-active-focus');
+        el.style.opacity = '1';
+    });
+    
+    document.getElementById('typingTimer').innerText = `${typeTimeElapsed}s`;
+    document.getElementById('typingWpm').innerText = '0';
+    document.getElementById('typingAcc').innerText = '100%';
+    
+    const input = document.getElementById('typingHiddenInput');
+    input.value = '';
+    
+    const container = document.getElementById('typingTextContainer');
+    // 预填充所有字符但设为透明，确保布局稳定不跳动
+    container.innerHTML = typingTargetText.split('').map((char, index) => {
+        const isSpace = char === ' ';
+        const isHint = !isSpace && (!/[a-zA-Z0-9]/.test(char) || (index === 0 || !/[a-zA-Z0-9]/.test(typingTargetText[index - 1])));
+        return `<span class="t-char ${index === 0 ? 't-current' : ''} ${!isSpace ? 't-untyped-placeholder' : ''}" data-real="${char}" style="${isHint || isSpace ? '' : 'color:transparent'}">${isSpace ? '&nbsp;' : char}</span>`;
+    }).join('');
+
+    focusTypingInput();
+    setTimeout(() => checkAndReadNextWord(0), 300);
+}
+
+function focusTypingInput() {
+    const input = document.getElementById('typingHiddenInput');
+    setTimeout(() => { input.focus(); }, 100);
+}
+
+function startTypingTimer() {
+    isTypingPlaying = true;
+    typeTimer = setInterval(() => {
+        typeTimeElapsed++;
+        document.getElementById('typingTimer').innerText = `${typeTimeElapsed}s`;
+        updateTypingStats();
+    }, 1000);
+}
+
+function updateTypingStats() {
+    const timeElapsed = typeTimeElapsed;
+    if (timeElapsed <= 0) return;
+
+    const spans = document.querySelectorAll('#typingTextContainer .t-char');
+    let correctCount = 0;
+    let errorCount = 0;
+
+    spans.forEach(span => {
+        if (span.classList.contains('t-correct')) correctCount++;
+        if (span.classList.contains('t-error')) errorCount++;
+    });
+
+    const wpm = Math.round((correctCount / 5) / (timeElapsed / 60));
+    document.getElementById('typingWpm').innerText = isNaN(wpm) || !isFinite(wpm) || wpm < 0 ? 0 : wpm;
+
+    const totalTyped = correctCount + errorCount;
+    const accuracy = totalTyped === 0 ? 100 : Math.round((correctCount / totalTyped) * 100);
+    document.getElementById('typingAcc').innerText = `${accuracy}%`;
+}
+
+function endTyping() {
+    clearInterval(typeTimer);
+    isTypingPlaying = false;
+    document.getElementById('typingHiddenInput').blur();
+    updateTypingStats();
+    if (typingCurrentData) {
+        markCardAsTyped(`${typingCurrentData.c}_${typingCurrentData.theme}`);
+    }
+}
+
+function closeTypingMode() {
+    clearInterval(typeTimer);
+    document.getElementById('typingModal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+// 事件绑定与中文输入法兼容及盲打模式欧路词典长按查词
+document.addEventListener('DOMContentLoaded', () => {
+    const hiddenInput = document.getElementById('typingHiddenInput');
+    if(hiddenInput) {
+        hiddenInput.addEventListener('input', handleTypingInput);
+
+        // --- 新增：Enter 键专属查词拦截 ---
+        hiddenInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // 彻底屏蔽回车键的文字输入
+                if (!typingTargetText) return;
+                
+                let pos = hiddenInput.value.length;
+                let target = typingTargetText;
+                
+                // 如果光标当前位置刚好是字母（比如停在下一个单词的首字母），直接从当前位置查词
+                // 否则（比如光标在空格、标点上），才往前退一位查找上一个单词，精准避免回退过多
+                let start = pos;
+                if (start >= target.length || !/[a-zA-Z]/.test(target[start])) {
+                    start = pos - 1;
+                }
+                if (start >= 0 && !/[a-zA-Z]/.test(target[start])) {
+                    start--;
+                }
+                if (start < 0 || start >= target.length) return;
+                
+                // 向左扩展找词头
+                let left = start;
+                while (left > 0 && /[a-zA-Z0-9'\-]/.test(target[left - 1])) {
+                    left--;
+                }
+                // 向右扩展找词尾
+                let right = start;
+                while (right < target.length && /[a-zA-Z0-9'\-]/.test(target[right])) {
+                    right++;
+                }
+                
+                let word = target.substring(left, right);
+                if (word && window.callEudic) {
+                    window.callEudic(word);
+                    // 尝试延时夺回焦点（受限于安卓系统分屏安全机制，可能无法100%强行夺回）
+                    setTimeout(focusTypingInput, 500);
+                    setTimeout(focusTypingInput, 1500);
+                }
+            }
+        });
+    }
+
+    let typingFingerTimer = null;
+    let typingLongPressActive = false;
+    let tStartX = 0, tStartY = 0;
+    let tTargetElement = null;
+
+    const typingCard = document.getElementById('typingLandscapeCard');
+    if (!typingCard) return;
+
+    typingCard.addEventListener('touchstart', (e) => {
+        const clientX = e.touches[0].clientX;
+        const clientY = e.touches[0].clientY;
+        
+        tTargetElement = e.target.closest('[data-word]') || e.target.closest('#typingTextContainer');
+        if (!tTargetElement) return;
+        
+        typingLongPressActive = false;
+        tStartX = clientX;
+        tStartY = clientY;
+        
+        typingFingerTimer = setTimeout(() => {
+            typingLongPressActive = true;
+            let word = "";
+            if (tTargetElement.hasAttribute('data-word')) {
+                word = tTargetElement.getAttribute('data-word');
+            } else if (tTargetElement.id === 'typingTextContainer' || tTargetElement.closest('#typingTextContainer')) {
+                if (e.target.classList.contains('t-char')) {
+                    const spans = Array.from(tTargetElement.closest('#typingTextContainer').children);
+                    const index = spans.indexOf(e.target);
+                    if (index !== -1) {
+                        let left = index;
+                        while(left >= 0 && /[a-zA-Z0-9'\-]/.test(typingTargetText[left])) left--;
+                        let right = index;
+                        while(right < typingTargetText.length && /[a-zA-Z0-9'\-]/.test(typingTargetText[right])) right++;
+                        word = typingTargetText.substring(left + 1, right);
+                    }
+                } else {
+                    word = getWordAtPoint(clientX, clientY, e.target);
+                }
+            }
+            if (word && window.callEudic) {
+                window.getSelection().removeAllRanges();
+                if(document.activeElement && document.activeElement.id !== 'typingHiddenInput') {
+                    document.activeElement.blur();
+                }
+                window.callEudic(word, tTargetElement);
+            }
+        }, 500);
+    }, { passive: true });
+
+    typingCard.addEventListener('touchmove', (e) => {
+        if (!typingFingerTimer) return;
+        const moveX = Math.abs(e.touches[0].clientX - tStartX);
+        const moveY = Math.abs(e.touches[0].clientY - tStartY);
+        if (moveX > 12 || moveY > 12) {
+            clearTimeout(typingFingerTimer);
+            typingFingerTimer = null;
+        }
+    }, { passive: true });
+
+    typingCard.addEventListener('touchend', (e) => {
+        if (typingFingerTimer) {
+            clearTimeout(typingFingerTimer);
+            typingFingerTimer = null;
+        }
+        if (tTargetElement) {
+            if (typingLongPressActive) {
+                e.preventDefault();
+                e.stopPropagation();
+                setTimeout(focusTypingInput, 100);
+            } else {
+                if (tTargetElement.hasAttribute('data-word')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    tTargetElement.click();
+                    setTimeout(focusTypingInput, 100);
+                }
+            }
+        }
+        tTargetElement = null;
+    }, { passive: false });
+
+    if ('getBattery' in navigator) { navigator.getBattery().then(battery => { const updateBattery = () => { const level = Math.round(battery.level * 100); document.getElementById('batteryBar').style.width = level + '%'; document.getElementById('batteryText').innerText = level + '%'; }; updateBattery(); battery.addEventListener('levelchange', updateBattery); }); }
+
+// 新增：盲打模式区域的鼠标右键（PC或长按模拟）点击查词，与回车查词逻辑完全复用、对齐
+    typingCard.addEventListener('contextmenu', (e) => {
+        const textContainer = document.getElementById('typingTextContainer');
+        if (!textContainer || !typingTargetText) return;
+
+        // 只有当右键点击在打字文本容器内部或其子元素 spans 上时才触发
+        if (e.target.classList.contains('t-char') || textContainer.contains(e.target)) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            let pos = 0;
+            if (e.target.classList.contains('t-char')) {
+                // 如果直接精准右键点击在某个字符 span 上，获取该字符在全文的索引位置
+                const spans = Array.from(textContainer.querySelectorAll('.t-char'));
+                const idx = spans.indexOf(e.target);
+                if (idx !== -1) pos = idx;
+            } else {
+                // 如果点击在容器空白处，则根据光标点从坐标推算字符位置
+                if (document.caretRangeFromPoint) {
+                    const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                    if (range && range.startContainer.parentNode.classList.contains('t-char')) {
+                        const spans = Array.from(textContainer.querySelectorAll('.t-char'));
+                        const idx = spans.indexOf(range.startContainer.parentNode);
+                        if (idx !== -1) pos = idx;
+                    }
+                }
+            }
+
+            // 执行与回车完全一致的动态智能测词探针逻辑
+            let start = pos;
+            if (start >= typingTargetText.length || !/[a-zA-Z]/.test(typingTargetText[start])) {
+                start = pos - 1;
+            }
+            if (start >= 0 && !/[a-zA-Z]/.test(typingTargetText[start])) {
+                start--;
+            }
+            if (start < 0 || start >= typingTargetText.length) return;
+
+            let left = start;
+            while (left > 0 && /[a-zA-Z0-9'\-]/.test(typingTargetText[left - 1])) {
+                left--;
+            }
+            let right = start;
+            while (right < typingTargetText.length && /[a-zA-Z0-9'\-]/.test(typingTargetText[right])) {
+                right++;
+            }
+
+            let word = typingTargetText.substring(left, right);
+            if (word && window.callEudic) {
+                window.getSelection().removeAllRanges();
+                window.callEudic(word);
+                setTimeout(focusTypingInput, 300);
+            }
+        }
+    });
+});
+
+function handleTypingInput() {
+    const hiddenInput = document.getElementById('typingHiddenInput');
+
+    // --- 暴力拦截：移动端键盘/输入法防污染与触发器 ---
+    if (hiddenInput.value.includes('/')) {
+        // 瞬间剥离斜杠，防止进入错字判定
+        hiddenInput.value = hiddenInput.value.replace(/\//g, '');
+        
+        let pos = hiddenInput.value.length;
+        let start = pos === typingTargetText.length ? pos - 1 : pos;
+        if (start >= 0 && !/[a-zA-Z]/.test(typingTargetText[start])) start--;
+        if (start >= 0) {
+            let left = start; while (left > 0 && /[a-zA-Z0-9'\-]/.test(typingTargetText[left - 1])) left--;
+            let right = start; while (right < typingTargetText.length && /[a-zA-Z0-9'\-]/.test(typingTargetText[right])) right++;
+            const word = typingTargetText.substring(left, right);
+            if (word) {
+                let activeSIdx = typingSentenceBounds.findIndex(b => pos >= b.start && pos <= b.end);
+                if (activeSIdx === -1 && pos >= typingTargetText.length) activeSIdx = typingSentenceBounds.length - 1;
+                let sentence = typingTargetText;
+                if (activeSIdx !== -1) {
+                    sentence = typingTargetText.substring(typingSentenceBounds[activeSIdx].start, typingSentenceBounds[activeSIdx].end + 1).trim();
+                }
+                // 只要触发了 / 键，无论屏幕比例均强制开启侧边栏并触发 AI 解析
+                if(typeof openDictSidebar === 'function') {
+                    openDictSidebar(word);
+                    // 延迟 50ms 触发 AI，确保字典查询的初始 HTML 清理动作已完成，防止 UI 冲突
+                    setTimeout(() => {
+                        if(typeof triggerFrontendAI === 'function') triggerFrontendAI(word, sentence);
+                    }, 50);
+                }
+            }
+        }
+        return; // 终止本次打字判定
+    }
+
+    if (!isTypingPlaying) {
+        startTypingTimer();
+        // 只要开始输入字符，立刻记录已练过该卡片
+        if (typingCurrentData) {
+            markCardAsTyped(`${typingCurrentData.c}_${typingCurrentData.theme}`);
+        }
+    }
+
+    let currentInput = hiddenInput.value
+        .replace(/，/g, ',')
+        .replace(/。/g, '.')
+        .replace(/！/g, '!')
+        .replace(/？/g, '?')
+        .replace(/（/g, '(')
+        .replace(/）/g, ')')
+        .replace(/“|”/g, '"')
+        .replace(/‘|’/g, "'")
+        .replace(/；/g, ';')
+        .replace(/：/g, ':');
+
+    const spans = document.querySelectorAll('#typingTextContainer .t-char');
+    
+    if (currentInput.length > typingTargetText.length) {
+        currentInput = currentInput.substring(0, typingTargetText.length);
+        hiddenInput.value = currentInput;
+        return;
+    }
+
+    if (currentInput.length > typingLastInputLength) {
+        const lastTypedIdx = currentInput.length - 1;
+        if (currentInput[lastTypedIdx] !== typingTargetText[lastTypedIdx]) {
+            playErrorSound();
+        } else {
+            checkAndReadNextWord(currentInput.length);
+        }
+    } else if (currentInput.length < typingLastInputLength) {
+        checkAndReadNextWord(currentInput.length);
+    }
+    typingLastInputLength = currentInput.length;
+
+    // 实时中英文焦点高亮联动
+    const currentPos = currentInput.length;
+    let activeSentenceIdx = typingSentenceBounds.findIndex(b => currentPos >= b.start && currentPos <= b.end);
+    if (activeSentenceIdx === -1 && currentPos >= typingTargetText.length) activeSentenceIdx = typingSentenceBounds.length - 1;
+    if (activeSentenceIdx === -1 && typingSentenceBounds.length > 0) activeSentenceIdx = 0;
+    
+    if (activeSentenceIdx !== currentTypingSentenceIndex) {
+        currentTypingSentenceIndex = activeSentenceIdx;
+        document.querySelectorAll('.t-zh-sentence').forEach((el, idx) => {
+            if (idx === activeSentenceIdx) {
+                el.classList.add('t-active-focus');
+                el.style.opacity = '1';
+            } else {
+                el.classList.remove('t-active-focus');
+                el.style.opacity = '0.3';
+            }
+        });
+    }
+
+    spans.forEach((span, index) => {
+        const charTarget = typingTargetText[index];
+        const charTyped = currentInput[index];
+        const isSpace = charTarget === ' ';
+        const isHint = !isSpace && (!/[a-zA-Z0-9]/.test(charTarget) || (index === 0 || !/[a-zA-Z0-9]/.test(typingTargetText[index - 1])));
+        
+        span.classList.remove('t-current', 't-correct', 't-error', 't-untyped-placeholder');
+
+        if (index < currentInput.length) {
+            span.style.color = 'var(--text-color)';
+            if (charTyped === charTarget) {
+                span.classList.add('t-correct');
+                span.innerText = isSpace ? '\u00A0' : charTarget;
+            } else {
+                span.classList.add('t-error');
+                span.innerText = charTyped === ' ' ? '␣' : charTyped;
+            }
+        } else if (index === currentInput.length) {
+            span.classList.add('t-current');
+            span.style.color = 'var(--accent)';
+            span.innerText = isSpace ? '_' : charTarget;
+        } else {
+            span.style.color = isHint ? '' : 'transparent';
+            span.innerText = isSpace ? '\u00A0' : charTarget;
+            if (!isSpace) span.classList.add('t-untyped-placeholder');
+        }
+    });
+
+    updateTypingStats();
+
+    if (currentInput.length === typingTargetText.length) {
+        endTyping();
+    }
+}
+
+// ==========================================
+// 🚀 纯净前端词典侧边栏系统 (彻底抛弃 Node.js 后端版)
+// ==========================================
+const DICT_DB_NAME = "MyPureDictDB";
+const DICT_STORE_NAME = "words";
+let localDictDb;
+
+function initDictDB() {
+    const req = indexedDB.open(DICT_DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+        const tempDb = e.target.result;
+        if (!tempDb.objectStoreNames.contains(DICT_STORE_NAME)) {
+            tempDb.createObjectStore(DICT_STORE_NAME, { keyPath: "word" });
+        }
+    };
+    req.onsuccess = (e) => {
+        localDictDb = e.target.result;
+        checkDictDB();
+    };
+}
+
+function checkDictDB() {
+    const tx = localDictDb.transaction([DICT_STORE_NAME], "readonly");
+    const store = tx.objectStore(DICT_STORE_NAME);
+    const countReq = store.count();
+    countReq.onsuccess = () => {
+        const count = countReq.result;
+        const statusEl = document.getElementById('dict-status-bar');
+        if (count > 0) {
+            statusEl.innerHTML = `<span style="color:var(--app-accent)">✅ 纯前端引擎就绪！已挂载 ${count} 个词条</span>`;
+        } else {
+            statusEl.innerHTML = `<span style="color:#ff3b30">⚠️ 词库空载，请点击 📦 导入纯净 JSON</span>`;
+        }
+    };
+}
+
+function importDataToDB(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById('dict-status-bar');
+    statusEl.innerHTML = `<span style="color:#ffcc00">⏳ 正在向 IndexedDB 极速写入，请稍候...</span>`;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            const tx = localDictDb.transaction([DICT_STORE_NAME], "readwrite");
+            const store = tx.objectStore(DICT_STORE_NAME);
+            let imported = 0;
+            for (const [key, val] of Object.entries(data)) {
+                store.put({ word: key.toLowerCase(), translation: val.translation });
+                imported++;
+            }
+            tx.oncomplete = () => {
+                alert(`🎉 成功导入 ${imported} 个词条到浏览器原生数据库！`);
+                checkDictDB();
+            };
+            tx.onerror = () => {
+                alert("写入数据库时发生错误！");
+                checkDictDB();
+            };
+        } catch(err) {
+            alert("JSON 解析失败！请确保文件格式正确。");
+            checkDictDB();
+        }
+    };
+    reader.readAsText(file);
+}
+
+function openDictSidebar(word) {
+    const sidebar = document.getElementById('dictSidebar');
+    if(!sidebar.classList.contains('active')) {
+        sidebar.classList.add('active');
+        document.body.classList.add('sidebar-active');
+        if (document.getElementById('lightbox').style.display === 'flex') {
+            setTimeout(updateLightboxContent, 300);
+        }
+        if (document.getElementById('typingModal').style.display === 'flex') {
+            setTimeout(() => drawTypingTree(typingCurrentData, document.getElementById('typingTreeContainer')), 310);
+        }
+    }
+    if(word) queryDictionary(word);
+}
+
+function closeDictSidebar() {
+    document.getElementById('dictSidebar').classList.remove('active');
+    document.body.classList.remove('sidebar-active');
+    if (document.getElementById('lightbox').style.display === 'flex') {
+        setTimeout(updateLightboxContent, 300);
+    }
+    if (document.getElementById('typingModal').style.display === 'flex') {
+        setTimeout(() => drawTypingTree(typingCurrentData, document.getElementById('typingTreeContainer')), 310);
+    }
+}
+
+window.liveSearch = function(word) { if(word) queryDictionary(word); };
+
+function queryDictionary(word) {
+    const contentArea = document.getElementById('dict-content-area');
+    // 如果侧边栏已有 AI 内容，则不进行全屏清空，仅标记加载状态
+    if (!contentArea.querySelector('.ai-res-container')) {
+        contentArea.innerHTML = '<p id="dict-loading-tip" style="opacity:0.5; text-align:center; padding-top: 40px;">⚡ 本地极速检索中...</p>';
+    }
+    
+    if(!localDictDb) {
+        contentArea.innerHTML = '<p style="color:#ff3b30; text-align:center; padding-top: 40px;">⚠️ 本地词库未挂载</p>';
+        return;
+    }
+    
+    const cleanWord = word.trim().toLowerCase();
+    const getCands = (w) => {
+        const c = new Set([w]);
+        if (w.length < 3) return [w];
+        if (w.endsWith('ies')) c.add(w.slice(0, -3) + 'y');
+        if (w.endsWith('ied')) c.add(w.slice(0, -3) + 'y');
+        if (w.endsWith('ing')) { c.add(w.slice(0, -3)); c.add(w.slice(0, -3) + 'e'); }
+        if (w.endsWith('ed')) { c.add(w.slice(0, -2)); c.add(w.slice(0, -1)); }
+        if (w.endsWith('es')) c.add(w.slice(0, -2));
+        if (w.endsWith('s') && !w.endsWith('ss')) c.add(w.slice(0, -1));
+        return Array.from(c);
+    };
+    
+    const candidates = getCands(cleanWord);
+    const tx = localDictDb.transaction([DICT_STORE_NAME], "readonly");
+    const store = tx.objectStore(DICT_STORE_NAME);
+    
+    const tryFind = (idx) => {
+        if(idx >= candidates.length) {
+            const loadingTip = document.getElementById('dict-loading-tip');
+            if(loadingTip) loadingTip.remove();
+            // 使用 insertAdjacentHTML 替代 innerHTML，防止抹除已存在的 AI 容器
+            if(!contentArea.querySelector('.mdx-res-container')) {
+                contentArea.insertAdjacentHTML('afterbegin', '<p class="mdx-res-container" style="color:#666;text-align:center;padding-top:40px;">本地纯净词典中未找到该词释义</p>');
+            }
+            return;
+        }
+        const req = store.get(candidates[idx]);
+        req.onsuccess = (e) => {
+            const res = e.target.result;
+            if(res) {
+                const loadingTip = document.getElementById('dict-loading-tip');
+                if(loadingTip) loadingTip.remove();
+                // 仅替换词典结果区域，保留 AI 区域
+                const oldMdx = contentArea.querySelector('.mdx-res-container');
+                if(oldMdx) oldMdx.remove();
+                const mdxHtml = `<div class="mdx-res-container" style="position:relative; padding:30px 20px; border:none;">
+                    <button class="icon-btn" style="position:absolute; top:20px; right:15px; padding: 4px 10px; font-size: 12px; color: #fff; background: #ff3b30 !important; border: none; z-index:200;" onclick="closeDictSidebar()">✕</button>
+                    <div style="font-size:32px; font-weight:900; color:var(--app-accent); font-family:monospace; margin-bottom:20px; border-bottom:2px solid var(--app-accent); padding-bottom:12px; padding-right:50px;">${res.word}</div>
+                    <div class="dict-mdx-content" style="font-size:16px; line-height:1.8; color:var(--app-text);">${res.translation}</div>
+                </div>`;
+                contentArea.insertAdjacentHTML('afterbegin', mdxHtml);
+            } else {
+                tryFind(idx + 1);
+            }
+        };
+    };
+    tryFind(0);
+}
+
+// 纯前端直接呼叫 Gemini 发射器
+async function triggerFrontendAI(word, sentence) {
+    const apiKey = localStorage.getItem('gemini_api_key');
+    const contentArea = document.getElementById('dict-content-area');
+    
+    const oldAi = contentArea.querySelector('.ai-res-container');
+    if(oldAi) oldAi.remove();
+    
+    contentArea.insertAdjacentHTML('beforeend', `<div class="ai-res-container" id="ai-loading" style="margin-top:15px; padding:20px; text-align:center; background:rgba(0,0,0,0.2); border-radius:12px; border:1px solid var(--app-border);">
+        <p style="color:var(--app-accent); font-family:monospace; font-weight:bold; margin:0;">⚡ 正在呼叫 Gemini 进行语境解析...</p>
+    </div>`);
+    contentArea.scrollTop = contentArea.scrollHeight;
+
+    if(!apiKey) {
+        document.getElementById('ai-loading').innerHTML = `<p style="color:#ff3b30; margin:0;">尚未配置 Gemini API Key，请点击右上角 ⚙️</p>`;
+        return;
+    }
+
+    try {
+        const prompt = `你是一个专业的英语语法与语境解析内核。请结合这句话的语境：\n"${sentence}"\n\n为我精准、简短、极客风格地分析单词 "${word}" 在此处的：\n1. 词性与句法功能\n2. 确切含义\n3. 用法精髓或固定搭配\n直接输出结果，拒绝客套废话，使用 Markdown 排版。`;
+        
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
+        const res = await fetch(apiUrl, { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ contents: [{parts: [{text: prompt}]}] }) 
+        });
+        
+        const data = await res.json();
+        if(data.error) throw new Error(data.error.message);
+        
+        let mdText = data.candidates[0].content.parts[0].text;
+        let htmlText = mdText.replace(/\*\*(.*?)\*\*/g, '<b style="color:var(--app-accent)">$1</b>')
+                             .replace(/\*(.*?)\*/g, '<i>$1</i>')
+                             .replace(/\n/g, '<br>');
+        
+        document.getElementById('ai-loading').outerHTML = `<div class="ai-res-container" style="margin-top:15px; padding:15px; background:rgba(0,128,0,0.1); border-left:4px solid var(--app-accent); border-radius:8px; font-size:15px; line-height:1.7; border: 1px solid rgba(0,255,65,0.2);">
+            <div style="font-weight:bold; color:var(--app-accent); margin-bottom:8px;">🧠 AI 语境手术刀</div>
+            ${htmlText}
+        </div>`;
+        contentArea.scrollTop = contentArea.scrollHeight;
+    } catch (err) {
+        document.getElementById('ai-loading').innerHTML = `<p style="color:#ff3b30; margin:0;">AI 解析失败: ${err.message}</p>`;
+    }
+}
+
+function openKeyModal() {
+    document.getElementById('ai-key-input').value = localStorage.getItem('gemini_api_key') || '';
+    document.getElementById('ai-key-modal').style.display = 'flex';
+}
+
+function saveApiKey() {
+    const key = document.getElementById('ai-key-input').value.trim();
+    localStorage.setItem('gemini_api_key', key);
+    document.getElementById('ai-key-modal').style.display = 'none';
+    alert('✅ API Key 已安全固化在本地浏览器！');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initDictDB();
+    const ca = document.getElementById('dict-content-area');
+    if(ca) {
+        ca.addEventListener('click', (e) => {
+            if (e.target.tagName === 'A' || e.target.closest('a')) return;
+            if (document.caretRangeFromPoint) {
+                const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                if (!range || range.startContainer.nodeType !== 3) return;
+                const text = range.startContainer.textContent;
+                let offset = range.startOffset;
+                let start = offset, end = offset;
+                while (start > 0 && /[a-zA-Z]/.test(text[start - 1])) start--;
+                while (end < text.length && /[a-zA-Z]/.test(text[end])) end++;
+                const word = text.slice(start, end);
+                if (word.length > 1) queryDictionary(word);
+            }
+        });
+    }
+});
+</script>
+
+<div id="dictSidebar">
+    <div id="dict-content-area" style="flex: 1; overflow-y: auto; padding: 0; background: var(--app-bg); color: var(--app-text);">
+        <p style="text-align:center; opacity:0.5; margin-top: 50px; padding: 20px;">👈 在左侧卡片长按单词在此查词<br>盲打模式中按下 <b>回车键</b> 直接触发 AI 深度语境解析</p>
+    </div>
+</div>
+
+<div id="ai-key-modal" class="lightbox" style="z-index: 5000; display: none; background: rgba(0,0,0,0.8); flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+    <div class="config-panel" style="max-width: 400px; text-align: center; background: var(--app-bg); border: 2px solid var(--app-border); color: var(--app-text); padding: 30px 20px;">
+        <h3 style="color: var(--app-accent); margin-bottom: 15px;">🧠 Gemini API 前端直连</h3>
+        <p style="font-size: 12px; color: #888; margin-bottom: 15px;">密钥仅保存在您的浏览器中，绝对安全。</p>
+        <input type="text" id="ai-key-input" placeholder="输入 Gemini API Key..." style="width: 100%; padding: 10px; margin-bottom: 20px; background: rgba(0,0,0,0.5); border: 1px solid var(--app-border); color: var(--app-text); border-radius: 6px; outline: none;">
+        <div style="display: flex; gap: 10px;">
+            <button class="icon-btn" style="flex: 1; justify-content: center; background: var(--app-accent); color: #000; font-weight: bold;" onclick="saveApiKey()">安全保存</button>
+            <button class="icon-btn" style="flex: 1; justify-content: center;" onclick="document.getElementById('ai-key-modal').style.display='none'">取消</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
