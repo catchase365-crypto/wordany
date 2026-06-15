@@ -1051,39 +1051,36 @@ function speakTTS(text, event, sIdx, btnEl) {
     if (event && event.target) markCardAsReadByElement(event.target);
     if(event) event.stopPropagation();
     if(!text) return;
-    
-    // 1. 核心版本计数，废弃因快速切换产生的异步幽灵回调
-    const mySpeechId = ++currentSpeechId; 
-    
-    // 2. 【核心大修】：强制结束并立刻强行恢复通道！
-    // 专门用来击碎长按单词调起欧路分屏时，Android 系统由于剥夺音频焦点导致的 Chrome 深度睡死状态
+
+    const mySpeechId = ++currentSpeechId;
+
+    // 1. 核心修复：彻底解决 Android/Chrome 引擎在瞬间连续调用 cancel() 后立即 speak() 导致的“重复首个音节/颤音”Bug
+    // 必须先 cancel，然后通过一个微小的异步延迟（50ms）等待底层系统音频通道彻底释放句柄
     window.speechSynthesis.cancel();
-    if (window.speechSynthesis.resume) {
-        window.speechSynthesis.resume();
-    }
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
 
-    // 全局重置所有卡片的聚焦状态，防止样式残留
-    document.querySelectorAll('.card-container').forEach(c => {
-        c.classList.remove('has-focus');
-        c.querySelectorAll('.active-focus').forEach(el => el.classList.remove('active-focus'));
-    });
+    setTimeout(() => {
+        // 如果在 50ms 延迟内又有新的朗读请求，则放弃本次过时的请求，防止音轨重叠
+        if (mySpeechId !== currentSpeechId) return;
 
-    // 如果传入了句子索引（说明是点击了句子，而非单个单词），开启舞台聚焦
-    let currentCard = null;
-    if (sIdx !== undefined && btnEl) {
-        currentCard = btnEl.closest('.card-container');
-        if (currentCard) {
-            currentCard.classList.add('has-focus');
-            currentCard.querySelectorAll(`.tts-sentence[data-index="${sIdx}"], .zh-sentence[data-index="${sIdx}"]`)
-                       .forEach(el => el.classList.add('active-focus'));
+        // 全局重置所有卡片的聚焦状态
+        document.querySelectorAll('.card-container').forEach(c => {
+            c.classList.remove('has-focus');
+            c.querySelectorAll('.active-focus').forEach(el => el.classList.remove('active-focus'));
+        });
+
+        let currentCard = null;
+        if (sIdx !== undefined && btnEl) {
+            currentCard = btnEl.closest('.card-container');
+            if (currentCard) {
+                currentCard.classList.add('has-focus');
+                currentCard.querySelectorAll(`.tts-sentence[data-index="${sIdx}"], .zh-sentence[data-index="${sIdx}"]`)
+                           .forEach(el => el.classList.add('active-focus'));
+            }
         }
-    }
 
-    const u = new SpeechSynthesisUtterance(text);
-    
-    // 3. 【核心大修】：将语音实例强行挂载到全局 window 对象上
-    // 防止长句子在分屏焦点切换、重新建立系统 TTS 通道时，被浏览器的垃圾回收(GC)机制当成闲置变数误杀
-    window.currentSpeechUtterance = u;
+        const u = new SpeechSynthesisUtterance(text);
+        window.currentSpeechUtterance = u;
 
     const voiceSelect = document.getElementById('voiceSelect');
     const voices = speechSynthesis.getVoices();
@@ -1117,8 +1114,9 @@ function speakTTS(text, event, sIdx, btnEl) {
         }
     };
 
-    // 4. 正式推入引擎执行
+    // 2. 正式推入引擎执行
     window.speechSynthesis.speak(u);
+    }, 50);
 }
 
 async function startRandomMode() {
@@ -2587,6 +2585,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let word = target.substring(left, right);
                 if (word && window.callEudic) {
+                    speakTTS(word);
                     window.callEudic(word);
                     // 尝试延时夺回焦点（受限于安卓系统分屏安全机制，可能无法100%强行夺回）
                     setTimeout(focusTypingInput, 500);
@@ -2636,6 +2635,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             if (word && window.callEudic) {
+                speakTTS(word);
                 window.getSelection().removeAllRanges();
                 if(document.activeElement && document.activeElement.id !== 'typingHiddenInput') {
                     document.activeElement.blur();
@@ -2963,11 +2963,11 @@ function closeDictSidebar() {
 window.liveSearch = function(word) { if(word) queryDictionary(word); };
 
 function queryDictionary(word) {
+    // 触发朗读
+    speakTTS(word);
     const contentArea = document.getElementById('dict-content-area');
-    // 如果侧边栏已有 AI 内容，则不进行全屏清空，仅标记加载状态
-    if (!contentArea.querySelector('.ai-res-container')) {
-        contentArea.innerHTML = '<p id="dict-loading-tip" style="opacity:0.5; text-align:center; padding-top: 40px;">⚡ 本地极速检索中...</p>';
-    }
+    // 彻底清空内容区域，确保单词解析与语法解析互斥显示
+    contentArea.innerHTML = '<p id="dict-loading-tip" style="opacity:0.5; text-align:center; padding-top: 40px;">⚡ 本地极速检索中...</p>';
     
     if(!localDictDb) {
         contentArea.innerHTML = '<p style="color:#ff3b30; text-align:center; padding-top: 40px;">⚠️ 本地词库未挂载</p>';
@@ -2993,29 +2993,18 @@ function queryDictionary(word) {
     
     const tryFind = (idx) => {
         if(idx >= candidates.length) {
-            const loadingTip = document.getElementById('dict-loading-tip');
-            if(loadingTip) loadingTip.remove();
-            // 使用 insertAdjacentHTML 替代 innerHTML，防止抹除已存在的 AI 容器
-            if(!contentArea.querySelector('.mdx-res-container')) {
-                contentArea.insertAdjacentHTML('afterbegin', '<p class="mdx-res-container" style="color:#666;text-align:center;padding-top:40px;">本地纯净词典中未找到该词释义</p>');
-            }
+            contentArea.innerHTML = '<p class="mdx-res-container" style="color:#666;text-align:center;padding-top:40px;">本地纯净词典中未找到该词释义</p>';
             return;
         }
         const req = store.get(candidates[idx]);
         req.onsuccess = (e) => {
             const res = e.target.result;
             if(res) {
-                const loadingTip = document.getElementById('dict-loading-tip');
-                if(loadingTip) loadingTip.remove();
-                // 仅替换词典结果区域，保留 AI 区域
-                const oldMdx = contentArea.querySelector('.mdx-res-container');
-                if(oldMdx) oldMdx.remove();
-                const mdxHtml = `<div class="mdx-res-container" style="position:relative; padding:30px 20px; border:none;">
+                contentArea.innerHTML = `<div class="mdx-res-container" style="position:relative; padding:30px 20px; border:none;">
                     <button class="icon-btn" style="position:absolute; top:20px; right:15px; padding: 4px 10px; font-size: 12px; color: #fff; background: #ff3b30 !important; border: none; z-index:200;" onclick="closeDictSidebar()">✕</button>
                     <div style="font-size:32px; font-weight:900; color:var(--app-accent); font-family:monospace; margin-bottom:20px; border-bottom:2px solid var(--app-accent); padding-bottom:12px; padding-right:50px;">${res.word}</div>
                     <div class="dict-mdx-content" style="font-size:16px; line-height:1.8; color:var(--app-text);">${res.translation}</div>
                 </div>`;
-                contentArea.insertAdjacentHTML('afterbegin', mdxHtml);
             } else {
                 tryFind(idx + 1);
             }
@@ -3029,12 +3018,11 @@ async function triggerFrontendAI(word, sentence) {
     const apiKey = localStorage.getItem('gemini_api_key');
     const contentArea = document.getElementById('dict-content-area');
     
-    const oldAi = contentArea.querySelector('.ai-res-container');
-    if(oldAi) oldAi.remove();
-    
-    contentArea.insertAdjacentHTML('beforeend', `<div class="ai-res-container" id="ai-loading" style="margin-top:15px; padding:20px; text-align:center; background:rgba(0,0,0,0.2); border-radius:12px; border:1px solid var(--app-border);">
+    // 彻底清空内容区域，确保语法解析完全替换单词解析
+    contentArea.innerHTML = `<div class="ai-res-container" id="ai-loading" style="position:relative; padding:40px 20px; text-align:center;">
+        <button class="icon-btn" style="position:absolute; top:20px; right:15px; padding: 4px 10px; font-size: 12px; color: #fff; background: #ff3b30 !important; border: none; z-index:200;" onclick="closeDictSidebar()">✕</button>
         <p style="color:var(--app-accent); font-family:monospace; font-weight:bold; margin:0;">⚡ 正在呼叫 Gemini 进行语境解析...</p>
-    </div>`);
+    </div>`;
     contentArea.scrollTop = contentArea.scrollHeight;
 
     if(!apiKey) {
@@ -3060,9 +3048,10 @@ async function triggerFrontendAI(word, sentence) {
                              .replace(/\*(.*?)\*/g, '<i>$1</i>')
                              .replace(/\n/g, '<br>');
         
-        document.getElementById('ai-loading').outerHTML = `<div class="ai-res-container" style="margin-top:15px; padding:15px; background:rgba(0,128,0,0.1); border-left:4px solid var(--app-accent); border-radius:8px; font-size:15px; line-height:1.7; border: 1px solid rgba(0,255,65,0.2);">
-            <div style="font-weight:bold; color:var(--app-accent); margin-bottom:8px;">🧠 AI 语境手术刀</div>
-            ${htmlText}
+        document.getElementById('ai-loading').outerHTML = `<div class="ai-res-container" style="position:relative; padding:30px 20px; font-size:15px; line-height:1.7;">
+            <button class="icon-btn" style="position:absolute; top:20px; right:15px; padding: 4px 10px; font-size: 12px; color: #fff; background: #ff3b30 !important; border: none; z-index:200;" onclick="closeDictSidebar()">✕</button>
+            <div style="font-weight:bold; font-size:18px; color:var(--app-accent); margin-bottom:12px; border-bottom:2px solid var(--app-accent); padding-bottom:8px;">🧠 AI 语境手术刀</div>
+            <div style="padding-top:10px;">${htmlText}</div>
         </div>`;
         contentArea.scrollTop = contentArea.scrollHeight;
     } catch (err) {
