@@ -1519,7 +1519,7 @@ async function initApp() {
             syncStatus.style.display = 'block';
             syncStatus.innerHTML = '✨ 首次访问：正在从 GitHub 同步 20,000 条核心数据...<br><span style="font-size:11px; opacity:0.8;">(约 27MB，仅首次加载需要消耗流量)</span>';
             
-            const files = ['./data/part1.jsonl', './data/part2.jsonl'];
+            const files = ['./Data/part1.jsonl', './Data/part2.jsonl'];
             let combinedData = [];
             
             for (const file of files) {
