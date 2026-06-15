@@ -516,6 +516,17 @@
         .theme-glass .dict-mdx-content { backdrop-filter: none; }
         .dict-mdx-content a { color: var(--app-accent) !important; text-decoration: underline !important; font-weight: bold; }
         
+        /* 精准覆盖深色和琉璃主题下的暗蓝色音标词头、海蓝色中文翻译及各类深蓝变体 */
+        body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content font[color="#0069b9" i],
+        body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content font[color="#0000D0" i],
+        body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content font[color="navy" i],
+        body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content b[style*="color:#0077cf" i],
+        body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content span[style*="color:#0077cf" i] {
+            color: #ffeb3b !important;
+            font-weight: bold !important;
+            text-shadow: 0 0 2px rgba(0, 0, 0, 0.8) !important;
+        }
+        
         /* 核心修复：为词典侧边栏注入琉璃动态磨砂玻璃质感 */
         body.glass-mode #dictSidebar,
         body.glass-mode #dict-content-area {
@@ -529,9 +540,9 @@
             box-shadow: -10px 0 30px rgba(0, 0, 0, 0.6) !important;
         }
         
-        /* 核心修复：通过滤镜数学映射，自动将浅色词典中极暗的蓝色/红色字体完美映射为深色模式下的柔和亮色，彻底解决对比度太低看不清的问题 */
+        /* 移除之前全局模糊的映射滤镜，改用上方原生元语法精准颜色拦截，确保文字绝对清晰不发虚 */
         body:not(.sepia-mode):not(.ink-mode) .dict-mdx-content {
-            filter: contrast(0.6) brightness(1.6) saturate(1.5);
+            filter: none !important;
         }
     </style>
 
@@ -925,16 +936,7 @@ async function renderReviewCards(dateStr, cardKeys, mode = 'read') {
                 startTypingMode(data);
                 return;
             }
-            if (!generatedDOMs[i]) {
-                const cardDOM = createBaseCardDOM(data);
-                stagingArea.appendChild(cardDOM);
-                await applyAutoFitLogic(cardDOM);
-                drawDynamicTree(cardDOM, data);
-                generatedDOMs[i] = cardDOM.cloneNode(true);
-                const canvas = await html2canvas(cardDOM, { scale: 2, backgroundColor: null });
-                generatedImagesData[i] = { theme: data.theme, dataUrl: canvas.toDataURL('image/png') };
-                cardDOM.remove();
-            }
+            await triggerLazyLoad(i);
             openLightbox(i);
         };
         resultsGrid.appendChild(wrapper);
@@ -1619,16 +1621,7 @@ async function renderCategory(category) {
             wrapper.classList.add('is-read');
         }
         wrapper.onclick = async () => {
-            if (!generatedDOMs[i]) {
-                const cardDOM = createBaseCardDOM(data);
-                stagingArea.appendChild(cardDOM);
-                await applyAutoFitLogic(cardDOM);
-                drawDynamicTree(cardDOM, data);
-                generatedDOMs[i] = cardDOM.cloneNode(true);
-                const canvas = await html2canvas(cardDOM, { scale: 2, backgroundColor: null });
-                generatedImagesData[i] = { theme: data.theme, dataUrl: canvas.toDataURL('image/png') };
-                cardDOM.remove();
-            }
+            await triggerLazyLoad(i);
             openLightbox(i);
         };
         resultsGrid.appendChild(wrapper);
@@ -1972,7 +1965,7 @@ function prevImage(e) {
 }
 
 async function triggerLazyLoad(index) {
-    if (!generatedDOMs[index] && rawResultsData[index]) {
+    if (rawResultsData[index]) {
         const data = rawResultsData[index];
         const cardDOM = createBaseCardDOM(data);
         document.getElementById('stagingArea').appendChild(cardDOM);
