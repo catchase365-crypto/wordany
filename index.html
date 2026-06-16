@@ -519,6 +519,10 @@
         @media (max-width: 1180px) and (orientation: landscape) {
             #dictSidebar { width: 320px !important; right: -320px !important; }
             #dictSidebar.active { transform: translateX(-320px) !important; }
+            
+            /* 【修复退出键遮挡】：让退出键的避让距离跟侧边栏320px对齐，不再冲进文章里 */
+            body.sidebar-active .lightbox-close { right: 328px !important; }
+            
             body.sidebar-active #typingLandscapeCard {
                 width: calc(100vw - 320px - 15px) !important; 
                 margin: 0 auto 0 15px !important;
@@ -526,13 +530,16 @@
                 gap: 15px !important;
             }
             body.sidebar-active #typingTextContainer {
-                font-size: 1.35rem !important;
-                line-height: 1.5 !important;
+                /* 👇 【自己调大小】：英文盲打区字号，数字越大字越大 (原1.35，现1.65) */
+                font-size: 1.65rem !important;
+                line-height: 1.6 !important;
                 padding-bottom: 10px !important;
+                padding-right: 20px !important;
             }
             body.sidebar-active #typingTranslation {
-                font-size: 0.95rem !important;
-                line-height: 1.4 !important;
+                /* 👇 【自己调大小】：中文翻译区字号，数字越大字越大 (原0.95，现1.15) */
+                font-size: 1.15rem !important;
+                line-height: 1.5 !important;
                 padding-top: 10px !important;
             }
             body.sidebar-active #typingLandscapeCard > div:first-child {
