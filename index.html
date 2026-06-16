@@ -796,6 +796,7 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
 <script>
 // 新增：从本地存储永久初始化已阅读卡片的唯一 Key 集合
 let readCards = new Set(JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'));
+let appState = { mode: 'category', reviewDate: null, reviewCards: [], reviewMode: 'read' };
 
 // 新增：根据卡片内被点击的组件，往上追溯并标记该卡片为已阅读状态
 function markCardAsReadByElement(el) {
@@ -938,6 +939,10 @@ function changeMonth(delta) {
 }
 
 async function renderReviewCards(dateStr, cardKeys, mode = 'read') {
+    appState.mode = 'review';
+    appState.reviewDate = dateStr;
+    appState.reviewCards = cardKeys;
+    appState.reviewMode = mode;
     document.querySelectorAll('.category-tab').forEach(tab => tab.classList.remove('active'));
     currentCategory = `Review-${dateStr}`;
     const resultsGrid = document.getElementById('resultsGrid');
@@ -1476,11 +1481,20 @@ function drawDynamicTree(cardDOM, data) {
     });
 }
 
+let themeTimer;
 async function changeTheme(val) {
     currentGlobalTheme = val;
     localStorage.setItem('app_theme', val);
     applyThemeToBody();
-    if (currentCategory) await renderCategory(currentCategory);
+    
+    clearTimeout(themeTimer);
+    themeTimer = setTimeout(async () => {
+        if (appState.mode === 'review') {
+            await renderReviewCards(appState.reviewDate, appState.reviewCards, appState.reviewMode);
+        } else if (currentCategory) {
+            await renderCategory(currentCategory);
+        }
+    }, 100);
 }
 
 function toggleDarkLight() {
@@ -1495,7 +1509,11 @@ async function toggleInkMode() {
     isInkMode = !isInkMode;
     localStorage.setItem('is_ink_mode', isInkMode);
     applyThemeToBody();
-    if (currentCategory) await renderCategory(currentCategory);
+    if (appState.mode === 'review') {
+        await renderReviewCards(appState.reviewDate, appState.reviewCards, appState.reviewMode);
+    } else if (currentCategory) {
+        await renderCategory(currentCategory);
+    }
 }
 
 function toggleHideTranslation() {
@@ -1660,6 +1678,7 @@ function setActiveTab(clickedTab) {
 }
 
 async function renderCategory(category) {
+    appState.mode = 'category';
     const localRenderId = ++currentRenderId;
     currentCategory = category;
     const resultsGrid = document.getElementById('resultsGrid');
