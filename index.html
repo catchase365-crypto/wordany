@@ -148,17 +148,14 @@
         /* ==================== 新增：琉璃液态磨砂主题 (theme-glass) ==================== */
         .bg-blobs { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; filter: blur(100px); display: none; overflow: hidden; pointer-events: none; }
         body.glass-mode .bg-blobs { display: block; }
-        .blob { position: absolute; width: 35vw; height: 35vw; border-radius: 50%; opacity: 0.4; mix-blend-mode: screen; animation: blob-move 20s infinite alternate ease-in-out; filter: blur(40px); }
-        .blob-1 { background: #ff2d55; top: -10%; left: -10%; }
-        .blob-2 { background: #34c759; bottom: -10%; right: -10%; animation-delay: -5s; }
-        .blob-3 { background: #af52de; top: 20%; left: 30%; animation-delay: -10s; }
-        .blob-4 { background: #007aff; top: 40%; left: 60%; animation-delay: -15s; }
-        .blob-5 { background: #ff9500; bottom: 20%; left: 10%; animation-delay: -8s; }
-        @keyframes blob-move {
-            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
-            50% { transform: translate(15vw, 10vh) scale(1.2) rotate(180deg); }
-            100% { transform: translate(-5vw, 20vh) scale(0.9) rotate(360deg); }
-        }
+        /* 🚀 性能优化版：静态高级感流体背景 */
+        .blob { position: absolute; border-radius: 50%; opacity: 0.35; mix-blend-mode: screen; filter: blur(50px); }
+        .blob-1 { background: #ff2d55; top: -15%; left: -10%; width: 45vw; height: 45vw; }
+        .blob-2 { background: #34c759; bottom: -15%; right: -10%; width: 45vw; height: 45vw; }
+        .blob-3 { background: #af52de; top: 25%; left: 15%; width: 30vw; height: 30vw; }
+        .blob-4 { background: #007aff; top: -5%; right: 5%; width: 40vw; height: 40vw; }
+        .blob-5 { background: #ff9500; bottom: 10%; left: -5%; width: 38vw; height: 38vw; }
+        /* 动画已移除，彻底释放 GPU 算力 */
 
         .theme-glass { --card-bg: rgba(255, 255, 255, 0.03); --text-color: #ffffff; --border-color: rgba(255, 255, 255, 0.1); --accent: #ffffff; --bg-img: none; --app-bg: #000000; --app-text: #ffffff; --app-border: rgba(255, 255, 255, 0.2); --app-accent: #ffffff; }
         .theme-glass.card-container { background: rgba(255, 255, 255, 0.03) !important; backdrop-filter: blur(60px) !important; -webkit-backdrop-filter: blur(60px) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6) !important; }
