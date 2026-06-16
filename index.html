@@ -797,8 +797,22 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
 </style>
 
 <script>
-// 新增：从本地存储永久初始化已阅读卡片的唯一 Key 集合
-let readCards = new Set(JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'));
+// 🚀 核心改造：将数据结构转为内存态，脱离 localStorage 的脆弱生命周期
+let readCards = new Set();
+let typedCards = new Set();
+let dailyReadData = {};
+let dailyTypingData = {};
+
+// 核心同步引擎：将内存进度静默保存到更稳定的 IndexedDB (localforage)
+function saveProgressToDB() {
+    localforage.setItem('catchase_user_progress', {
+        readCards: [...readCards],
+        typedCards: [...typedCards],
+        dailyRead: dailyReadData,
+        dailyTyping: dailyTypingData
+    }).catch(e => console.error("进度保存失败:", e));
+}
+
 let appState = { mode: 'category', reviewDate: null, reviewCards: [], reviewMode: 'read' };
 
 // 新增：根据卡片内被点击的组件，往上追溯并标记该卡片为已阅读状态
@@ -810,9 +824,10 @@ function markCardAsReadByElement(el) {
     if (!cardKey) return;
 
     // 1. 如果是首次阅读，更新全局已学集合及首页高亮状态
+    let hasChanged = false;
     if (!readCards.has(cardKey)) {
         readCards.add(cardKey);
-        localStorage.setItem('catchase_read_cards', JSON.stringify([...readCards]));
+        hasChanged = true;
         const homeTabs = document.querySelectorAll('#resultsGrid .category-tab');
         homeTabs.forEach(tab => {
             if (tab.getAttribute('data-card-key') === cardKey) {
@@ -828,14 +843,15 @@ function markCardAsReadByElement(el) {
     const d = String(today.getDate()).padStart(2, '0');
     const dateStr = `${y}-${m}-${d}`;
     
-    let dailyData = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
-    if (!dailyData[dateStr]) dailyData[dateStr] = [];
-    if (!dailyData[dateStr].includes(cardKey)) {
-        dailyData[dateStr].push(cardKey);
-        localStorage.setItem('catchase_daily_read', JSON.stringify(dailyData));
+    if (!dailyReadData[dateStr]) dailyReadData[dateStr] = [];
+    if (!dailyReadData[dateStr].includes(cardKey)) {
+        dailyReadData[dateStr].push(cardKey);
+        hasChanged = true;
         if(typeof renderCalendar === 'function') renderCalendar();
         updateTodayProgressUI();
     }
+    
+    if (hasChanged) saveProgressToDB();
 }
 
 function updateTodayProgressUI() {
@@ -843,8 +859,7 @@ function updateTodayProgressUI() {
     if (!el) return;
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const dailyData = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
-    const count = dailyData[dateStr] ? dailyData[dateStr].length : 0;
+    const count = dailyReadData[dateStr] ? dailyReadData[dateStr].length : 0;
     el.innerHTML = `🏆 今日已学: ${count} 张`;
 }
 
@@ -859,22 +874,24 @@ function switchCalMode(mode) {
     renderCalendar();
 }
 
-let typedCards = new Set(JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'));
 function markCardAsTyped(cardKey) {
+    let hasChanged = false;
     if (!typedCards.has(cardKey)) {
         typedCards.add(cardKey);
-        localStorage.setItem('catchase_typed_cards', JSON.stringify([...typedCards]));
+        hasChanged = true;
     }
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    let dailyData = JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}');
-    if (!dailyData[dateStr]) dailyData[dateStr] = [];
+    
+    if (!dailyTypingData[dateStr]) dailyTypingData[dateStr] = [];
     // 修改逻辑：只要调用了打字记录，即认为已经练过，无需判断是否打完，同时记录去重
-    if (!dailyData[dateStr].includes(cardKey)) {
-        dailyData[dateStr].push(cardKey);
-        localStorage.setItem('catchase_daily_typing', JSON.stringify(dailyData));
+    if (!dailyTypingData[dateStr].includes(cardKey)) {
+        dailyTypingData[dateStr].push(cardKey);
+        hasChanged = true;
         if(typeof renderCalendar === 'function') renderCalendar();
     }
+    
+    if (hasChanged) saveProgressToDB();
 }
 
 function renderCalendar() {
@@ -890,8 +907,7 @@ function renderCalendar() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     
-    const dailyDataKey = currentCalMode === 'type' ? 'catchase_daily_typing' : 'catchase_daily_read';
-    const dailyData = JSON.parse(localStorage.getItem(dailyDataKey) || '{}');
+    const dailyData = currentCalMode === 'type' ? dailyTypingData : dailyReadData;
     const calGrid = document.getElementById('calGrid');
     calGrid.innerHTML = '';
     
@@ -1590,6 +1606,22 @@ async function initApp() {
     populateVoiceList();
     const syncStatus = document.getElementById('syncStatus');
     try {
+        // 0. 启动时优先从稳固的 IndexedDB 恢复进度数据
+        const progressData = await localforage.getItem('catchase_user_progress');
+        if (progressData) {
+            readCards = new Set(progressData.readCards || []);
+            typedCards = new Set(progressData.typedCards || []);
+            dailyReadData = progressData.dailyRead || {};
+            dailyTypingData = progressData.dailyTyping || {};
+        } else {
+            // 如果 DB 没有（如旧版刚更新），则从旧的 localStorage 中抢救数据并立刻迁移备份
+            readCards = new Set(JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'));
+            typedCards = new Set(JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'));
+            dailyReadData = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
+            dailyTypingData = JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}');
+            saveProgressToDB();
+        }
+
         // 1. 清理掉以前那个导致发热的庞大 27MB 数据库
         await localforage.removeItem('word_cards_db');
         
@@ -2324,45 +2356,37 @@ function closeP2PSync() {
 
 function getSyncData() {
     return {
-        readCards: JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'),
-        dailyRead: JSON.parse(localStorage.getItem('catchase_daily_read') || '{}'),
-        typedCards: JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'),
-        dailyTyping: JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}')
+        readCards: [...readCards],
+        dailyRead: dailyReadData,
+        typedCards: [...typedCards],
+        dailyTyping: dailyTypingData
     };
 }
 
 function mergeSyncData(remoteData) {
-    let localCards = new Set(JSON.parse(localStorage.getItem('catchase_read_cards') || '[]'));
-    if (remoteData.readCards) remoteData.readCards.forEach(c => localCards.add(c));
-    localStorage.setItem('catchase_read_cards', JSON.stringify([...localCards]));
-    readCards = localCards;
+    if (remoteData.readCards) remoteData.readCards.forEach(c => readCards.add(c));
     
-    let localDaily = JSON.parse(localStorage.getItem('catchase_daily_read') || '{}');
     if (remoteData.dailyRead) {
         for(let date in remoteData.dailyRead) {
-            if(!localDaily[date]) localDaily[date] = [];
-            let ds = new Set(localDaily[date]);
+            if(!dailyReadData[date]) dailyReadData[date] = [];
+            let ds = new Set(dailyReadData[date]);
             remoteData.dailyRead[date].forEach(c => ds.add(c));
-            localDaily[date] = [...ds];
+            dailyReadData[date] = [...ds];
         }
     }
-    localStorage.setItem('catchase_daily_read', JSON.stringify(localDaily));
     
-    let localTyped = new Set(JSON.parse(localStorage.getItem('catchase_typed_cards') || '[]'));
-    if (remoteData.typedCards) remoteData.typedCards.forEach(c => localTyped.add(c));
-    localStorage.setItem('catchase_typed_cards', JSON.stringify([...localTyped]));
-    typedCards = localTyped;
+    if (remoteData.typedCards) remoteData.typedCards.forEach(c => typedCards.add(c));
     
-    let localDailyTyping = JSON.parse(localStorage.getItem('catchase_daily_typing') || '{}');
     if (remoteData.dailyTyping) {
         for(let date in remoteData.dailyTyping) {
-            if(!localDailyTyping[date]) localDailyTyping[date] = [];
-            let ds = new Set(localDailyTyping[date]);
+            if(!dailyTypingData[date]) dailyTypingData[date] = [];
+            let ds = new Set(dailyTypingData[date]);
             remoteData.dailyTyping[date].forEach(c => ds.add(c));
-            localDailyTyping[date] = [...ds];
+            dailyTypingData[date] = [...ds];
         }
     }
-    localStorage.setItem('catchase_daily_typing', JSON.stringify(localDailyTyping));
+    
+    saveProgressToDB();
 
     if(typeof renderCalendar === 'function') renderCalendar();
     if(typeof updateTodayProgressUI === 'function') updateTodayProgressUI();
