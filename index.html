@@ -945,7 +945,15 @@ async function renderReviewCards(dateStr, cardKeys, mode = 'read') {
     resultsGrid.innerHTML = '';
     stagingArea.innerHTML = '';
     
-    const filteredData = allImportedData.filter(d => cardKeys.includes(`${d.c}_${d.theme}`));
+    // 🚀 核心优化：复习模式跨分类动态寻址加载，绝不全量加载
+    let filteredData = [];
+    let neededCategories = new Set(cardKeys.map(key => key.split('_')[0]));
+    for (let cat of neededCategories) {
+        let catData = await localforage.getItem('word_cards_cat_' + cat);
+        if (catData) {
+            filteredData.push(...catData.filter(d => cardKeys.includes(`${d.c}_${d.theme}`)));
+        }
+    }
     
     if (filteredData.length === 0) {
         alert("找不到该日期的卡片数据，可能已被覆盖或删除。");
@@ -1161,10 +1169,14 @@ function speakTTS(text, event, sIdx, btnEl) {
 }
 
 async function startRandomMode() {
-    if (!allImportedData || allImportedData.length === 0) return alert("数据正在加载，请稍候...");
+    if (!globalCategoryList || globalCategoryList.length === 0) return alert("数据正在加载，请稍候...");
     currentCategory = 'Random';
-    // 随机洗牌全量数据
-    rawResultsData = [...allImportedData].sort(() => Math.random() - 0.5);
+    
+    // 🚀 核心优化：不洗牌 20000 条，只随机抽一个分类来洗牌
+    const randomCat = globalCategoryList[Math.floor(Math.random() * globalCategoryList.length)];
+    const catData = await localforage.getItem('word_cards_cat_' + randomCat) || [];
+    
+    rawResultsData = [...catData].sort(() => Math.random() - 0.5);
     generatedImagesData = new Array(rawResultsData.length).fill(null);
     generatedDOMs = new Array(rawResultsData.length).fill(null);
     openLightbox(0);
@@ -1552,66 +1564,80 @@ function applyThemeToBody() {
     if(typeof renderCalendar === 'function') renderCalendar();
 }
 
+let globalCategoryList = []; // 全局目录索引
+
 async function initApp() {
     applyThemeToBody();
     populateVoiceList();
     const syncStatus = document.getElementById('syncStatus');
     try {
-        allImportedData = await localforage.getItem('word_cards_db');
+        // 1. 清理掉以前那个导致发热的庞大 27MB 数据库
+        await localforage.removeItem('word_cards_db');
         
-        if (!allImportedData || allImportedData.length === 0) {
+        // 2. 尝试读取轻量级目录
+        globalCategoryList = await localforage.getItem('word_cards_category_list');
+        
+        if (!globalCategoryList || globalCategoryList.length === 0) {
             syncStatus.style.display = 'block';
-            syncStatus.innerHTML = '✨ 首次访问：正在从 GitHub 同步 20,000 条核心数据...<br><span style="font-size:11px; opacity:0.8;">(约 27MB，仅首次加载需要消耗流量)</span>';
+            syncStatus.innerHTML = '✨ 数据架构升级：正在将 27MB 词库拆分为轻量级小抽屉...<br><span style="font-size:11px; opacity:0.8;">(完成后将彻底告别发热与闪退，且无需再次同步)</span>';
             
             const files = ['./Data/part1.jsonl', './Data/part2.jsonl'];
-            let combinedData = [];
+            let categoryMap = {}; 
             
             for (const file of files) {
-                const response = await fetch(file);
-                const text = await response.text();
-                const lines = text.split('\n').filter(line => line.trim());
-                
-                lines.forEach(line => {
-                    try {
-                        const parsed = JSON.parse(line);
-                        combinedData.push({
-                            c: parsed.c || '未分类',
-                            theme: parsed.t,
-                            pos: parsed.pos || '',
-                            ui: parsed.ui || 'modern',
-                            words: parsed.w.map(word => ({
-                                word: word.n, phonetic: word.p, definition: word.d
-                            })),
-                            paragraph_en: parsed.en,
-                            paragraph_zh: parsed.zh
-                        });
-                    } catch (err) {}
-                });
+                try {
+                    const response = await fetch(file);
+                    const text = await response.text();
+                    const lines = text.split('\n').filter(line => line.trim());
+                    
+                    lines.forEach(line => {
+                        try {
+                            const parsed = JSON.parse(line);
+                            const cat = parsed.c || '未分类';
+                            if (!categoryMap[cat]) categoryMap[cat] = [];
+                            categoryMap[cat].push({
+                                c: cat,
+                                theme: parsed.t,
+                                pos: parsed.pos || '',
+                                ui: parsed.ui || 'modern',
+                                words: parsed.w.map(word => ({
+                                    word: word.n, phonetic: word.p, definition: word.d
+                                })),
+                                paragraph_en: parsed.en,
+                                paragraph_zh: parsed.zh
+                            });
+                        } catch (err) {}
+                    });
+                } catch(e) { console.error(e); }
             }
             
-            allImportedData = combinedData;
-            await localforage.setItem('word_cards_db', allImportedData);
-            syncStatus.innerText = '✅ 同步完成！数据已持久化到本地离线空间。';
+            globalCategoryList = Object.keys(categoryMap).sort();
+            // 3. 将数据按分类分块存入硬盘，内存直接释放
+            for (const cat of globalCategoryList) {
+                await localforage.setItem('word_cards_cat_' + cat, categoryMap[cat]);
+            }
+            await localforage.setItem('word_cards_category_list', globalCategoryList);
+            categoryMap = null; 
+            
+            syncStatus.innerText = '✅ 架构重构完成！现在性能起飞。';
             setTimeout(() => syncStatus.style.display = 'none', 3000);
         }
 
-        const categories = new Set(allImportedData.map(d => d.c));
-        const categoryList = Array.from(categories).sort();
-        renderCategoryTabs(categoryList);
-        if (categoryList.length > 0) await renderCategory(categoryList[0]);
+        renderCategoryTabs(globalCategoryList);
+        if (globalCategoryList.length > 0) await renderCategory(globalCategoryList[0]);
         
         if(typeof renderCalendar === 'function') renderCalendar();
 
     } catch (error) {
         console.error('Initialization error:', error);
         syncStatus.style.display = 'block';
-        syncStatus.innerText = '❌ 数据同步失败，请检查网络或路径配置。';
+        syncStatus.innerText = '❌ 数据加载失败，请检查网络或路径配置。';
     }
 }
 
 async function forceSync() {
-    if(confirm("确定要强制重新同步云端数据吗？\n这将清空本地数据库并刷新页面。")) {
-        await localforage.removeItem('word_cards_db');
+    if(confirm("确定要强制重新同步云端数据吗？\n这将清空本地所有缓存并刷新页面。")) {
+        await localforage.clear();
         location.reload();
     }
 }
@@ -1643,12 +1669,13 @@ async function renderCategory(category) {
     resultsGrid.innerHTML = '';
     stagingArea.innerHTML = '';
     
-    const filteredData = category === 'All' ? allImportedData : allImportedData.filter(d => d.c === category);
-    rawResultsData = filteredData;
-    generatedImagesData = new Array(filteredData.length).fill(null);
-    generatedDOMs = new Array(filteredData.length).fill(null);
+    // 🚀 核心优化：按需从硬盘抓取当前分类的几十条数据，拒绝 27MB 霸占内存
+    allImportedData = await localforage.getItem('word_cards_cat_' + category) || [];
+    rawResultsData = allImportedData;
+    generatedImagesData = new Array(rawResultsData.length).fill(null);
+    generatedDOMs = new Array(rawResultsData.length).fill(null);
 
-    filteredData.forEach((data, i) => {
+    rawResultsData.forEach((data, i) => {
         const wrapper = document.createElement('div');
         wrapper.className = 'category-tab';
         wrapper.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
