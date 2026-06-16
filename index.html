@@ -1058,9 +1058,8 @@ let currentPenColor = '#00ff41';
 let currentPenWeight = 3;
 let currentSpeechId = 0; // 核心修复：全局双语朗读版本追踪计数器
 
-// 升级版跨平台唤端引擎：完美适配 iOS 独立 App 安全策略
-// 升级版跨平台唤端引擎：增加 Android 分屏焦点强刷安全锁
-window.callEudic = function(word, el) {
+// 本地字典查询引擎：触发侧边栏检索
+window.lookupWord = function(word, el) {
     if (!word) return;
     if (el) markCardAsReadByElement(el);
     
@@ -1301,7 +1300,7 @@ function createBaseCardDOM(data) {
     data.words.forEach((item, i) => {
         const color = HighlighterColors[i % HighlighterColors.length];
         const cleanWord = item.word.replace(/'/g, "\\'");
-        defHTML += `<div class="def-item" data-word="${cleanWord}" style="flex-direction: column; align-items: flex-start; cursor:pointer; transition: transform 0.2s;" onclick="speakTTS('${cleanWord}', event)" oncontextmenu="window.callEudic('${cleanWord}', this); return false;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+        defHTML += `<div class="def-item" data-word="${cleanWord}" style="flex-direction: column; align-items: flex-start; cursor:pointer; transition: transform 0.2s;" onclick="speakTTS('${cleanWord}', event)" oncontextmenu="window.lookupWord('${cleanWord}', this); return false;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
             <div style="margin-bottom: 2px;"><mark class="hl" style="background-color: ${color}; font-weight: 600; margin-right: 6px;">${item.word}</mark><span style="font-size: 12px; color: #888;">${item.phonetic || ''}</span></div>
             <div class="zh-def" style="color: #444;">${item.definition}</div>
         </div>`;
@@ -1382,7 +1381,7 @@ function drawDynamicTree(cardDOM, data) {
         el.style.cursor = 'pointer';
         el.setAttribute('data-word', cleanWordAttr);
         el.setAttribute('onclick', `speakTTS('${cleanWordAttr}', event)`);
-        el.setAttribute('oncontextmenu', `window.callEudic('${cleanWordAttr}'); return false;`);
+        el.setAttribute('oncontextmenu', `window.lookupWord('${cleanWordAttr}'); return false;`);
         el.style.userSelect = 'none'; 
         el.style.webkitUserSelect = 'none';
         el.innerText = item.word;
@@ -1725,8 +1724,8 @@ function initDrawingCanvas() {
                     } else if (sentenceNode && targetElement.closest('.en-paragraph')) {
                         word = getWordAtPoint(e.clientX, e.clientY, targetElement);
                     }
-                    if (word && window.callEudic) {
-                        window.callEudic(word, targetElement);
+                    if (word && window.lookupWord) {
+                        window.lookupWord(word, targetElement);
                     }
                 }, 500);
             }
@@ -2586,10 +2585,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 let word = target.substring(left, right);
-                if (word && window.callEudic) {
+                if (word && window.lookupWord) {
                     speakTTS(word);
-                    window.callEudic(word);
-                    // 尝试延时夺回焦点（受限于安卓系统分屏安全机制，可能无法100%强行夺回）
+                    window.lookupWord(word);
+                    // 尝试延时夺回焦点
                     setTimeout(focusTypingInput, 500);
                     setTimeout(focusTypingInput, 1500);
                 }
@@ -2636,13 +2635,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     word = getWordAtPoint(clientX, clientY, e.target);
                 }
             }
-            if (word && window.callEudic) {
+            if (word && window.lookupWord) {
                 speakTTS(word);
                 window.getSelection().removeAllRanges();
                 if(document.activeElement && document.activeElement.id !== 'typingHiddenInput') {
                     document.activeElement.blur();
                 }
-                window.callEudic(word, tTargetElement);
+                window.lookupWord(word, tTargetElement);
             }
         }, 500);
     }, { passive: true });
@@ -2729,9 +2728,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let word = typingTargetText.substring(left, right);
-            if (word && window.callEudic) {
+            if (word && window.lookupWord) {
                 window.getSelection().removeAllRanges();
-                window.callEudic(word);
+                window.lookupWord(word);
                 setTimeout(focusTypingInput, 300);
             }
         }
