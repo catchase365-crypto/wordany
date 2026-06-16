@@ -514,6 +514,31 @@
             gap: 20px !important;
             padding: 20px !important;
         }
+
+        /* 针对 iPad mini 等中小尺寸平板的紧凑无缝适配 (盲打+查词双开状态) */
+        @media (max-width: 1180px) and (orientation: landscape) {
+            #dictSidebar { width: 320px !important; right: -320px !important; }
+            #dictSidebar.active { transform: translateX(-320px) !important; }
+            body.sidebar-active #typingLandscapeCard {
+                width: calc(100vw - 320px - 15px) !important; 
+                margin: 0 auto 0 15px !important;
+                padding: 15px !important;
+                gap: 15px !important;
+            }
+            body.sidebar-active #typingTextContainer {
+                font-size: 1.35rem !important;
+                line-height: 1.5 !important;
+                padding-bottom: 10px !important;
+            }
+            body.sidebar-active #typingTranslation {
+                font-size: 0.95rem !important;
+                line-height: 1.4 !important;
+                padding-top: 10px !important;
+            }
+            body.sidebar-active #typingLandscapeCard > div:first-child {
+                padding-right: 15px !important;
+            }
+        }
         body.sidebar-active #typingLandscapeCard > div:first-child { flex: 2 !important; }
         body.sidebar-active #typingLandscapeCard > div:last-child { flex: 1.5 !important; }
         
