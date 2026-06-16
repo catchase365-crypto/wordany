@@ -2781,6 +2781,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+let lastRenderedInputLength = 0;
 function handleTypingInput() {
     const hiddenInput = document.getElementById('typingHiddenInput');
 
@@ -2875,13 +2876,19 @@ function handleTypingInput() {
         });
     }
 
-    spans.forEach((span, index) => {
+    // 🚀 核心无感优化：通过数学裁剪，只精准计算和刷新光标前后 3 个字符，冻结其余上百个 Span
+    const startIdx = Math.max(0, Math.min(lastRenderedInputLength, currentInput.length) - 2);
+    const endIdx = Math.min(typingTargetText.length, Math.max(lastRenderedInputLength, currentInput.length) + 3);
+    
+    for (let index = startIdx; index < endIdx; index++) {
+        const span = spans[index];
+        if (!span) continue;
         const charTarget = typingTargetText[index];
         const charTyped = currentInput[index];
         const isSpace = charTarget === ' ';
         const isHint = !isSpace && (!/[a-zA-Z0-9]/.test(charTarget) || (index === 0 || !/[a-zA-Z0-9]/.test(typingTargetText[index - 1])));
         
-        span.classList.remove('t-current', 't-correct', 't-error', 't-untyped-placeholder');
+        span.className = 't-char';
 
         if (index < currentInput.length) {
             span.style.color = 'var(--text-color)';
@@ -2901,7 +2908,8 @@ function handleTypingInput() {
             span.innerText = isSpace ? '\u00A0' : charTarget;
             if (!isSpace) span.classList.add('t-untyped-placeholder');
         }
-    });
+    }
+    lastRenderedInputLength = currentInput.length;
 
     updateTypingStats();
 
