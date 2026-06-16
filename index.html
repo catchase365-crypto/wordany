@@ -635,6 +635,7 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
     <div id="syncStatus" style="margin: 10px 0; padding: 12px; background: rgba(255, 235, 59, 0.1); border: 1px solid rgba(255, 235, 59, 0.3); border-radius: 8px; color: #ffeb3b; font-size: 13px; display: none; text-align: center; line-height: 1.5;"></div>
     
     <div class="btn-group">
+        <button id="abortBtn" onclick="abortGeneration()" style="background: #dc3545; display: none;">强制停止生成</button>
         <button id="downloadBtn" onclick="downloadAllImages()">打包下载所有图片</button>
         <button id="downloadDataBtn" onclick="downloadAllData()">下载轻量数据(JSONL)</button>
     </div>
@@ -1046,6 +1047,8 @@ let currentGalleryIndex = 0;
 let cardsPerView = 1;
 let allImportedData = [];
 let currentCategory = 'All';
+let touchStartX = 0;
+let isAborted = false;
 let currentRenderId = 0;
 let currentGlobalTheme = localStorage.getItem('app_theme') || 'oled';
 let isInkMode = localStorage.getItem('is_ink_mode') === 'true';
@@ -1058,8 +1061,9 @@ let currentPenColor = '#00ff41';
 let currentPenWeight = 3;
 let currentSpeechId = 0; // 核心修复：全局双语朗读版本追踪计数器
 
-// 本地字典查询引擎：触发侧边栏检索
-window.lookupWord = function(word, el) {
+// 升级版跨平台唤端引擎：完美适配 iOS 独立 App 安全策略
+// 升级版跨平台唤端引擎：增加 Android 分屏焦点强刷安全锁
+window.callEudic = function(word, el) {
     if (!word) return;
     if (el) markCardAsReadByElement(el);
     
@@ -1240,7 +1244,70 @@ const HighlighterColors = [
 
 
 
-/* 旧版废弃 AI 批量生成函数大扫除完毕 */
+async function startBatchGeneration() {
+    isAborted = false;
+    currentRenderId++;
+    document.getElementById('abortBtn').style.display = 'block';
+    const rawTopic = document.getElementById('topicInput').value;
+    const generateBtn = document.getElementById('generateBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resultsGrid = document.getElementById('resultsGrid');
+    const stagingArea = document.getElementById('stagingArea');
+
+    if(!rawTopic) return alert("请输入内容！");
+    
+    const topics = rawTopic.split(/;|；|\n/).map(t => t.trim()).filter(t => t);
+    if(topics.length === 0) return alert("请输入至少一个关键词！");
+
+    generateBtn.disabled = true;
+    generateBtn.innerText = 'AI与排版引擎正在运算...';
+    downloadBtn.style.display = 'none';
+    document.getElementById('downloadDataBtn').style.display = 'none';
+    resultsGrid.innerHTML = ''; 
+    stagingArea.innerHTML = '';
+    generatedImagesData = new Array(topics.length).fill(null);
+    generatedDOMs = new Array(topics.length).fill(null);
+
+    topics.forEach((topic, index) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper';
+        wrapper.id = `wrapper-${index}`;
+        wrapper.innerHTML = `<div class="status-text">正在构思<br><b>${topic}</b><br>自适应排版中...</div>`;
+        resultsGrid.appendChild(wrapper);
+    });
+
+    // 离线模式：直接尝试解析输入内容
+    try {
+        const data = JSON.parse(rawTopic);
+        allImportedData = [data];
+        await renderCategory('All');
+    } catch (e) {
+        alert("无法识别输入格式，请输入有效的 JSON 对象。");
+    }
+
+    generateBtn.disabled = false;
+    generateBtn.innerText = '生成精美卡片';
+    document.getElementById('abortBtn').style.display = 'none';
+    if (generatedImagesData.some(item => item !== null)) {
+        downloadBtn.style.display = 'block';
+        document.getElementById('downloadDataBtn').style.display = 'block';
+    }
+}
+
+function abortGeneration() {
+    if(confirm("确定要强制停止生成吗？已完成的卡片将保留。")) {
+        isAborted = true;
+        document.getElementById('generateBtn').disabled = false;
+        document.getElementById('generateBtn').innerText = '生成精美卡片';
+        document.getElementById('abortBtn').style.display = 'none';
+        if (generatedImagesData.some(item => item !== null)) {
+            document.getElementById('downloadBtn').style.display = 'block';
+            document.getElementById('downloadDataBtn').style.display = 'block';
+        }
+    }
+}
+
+
 
 function createBaseCardDOM(data) {
     const card = document.createElement('div');
@@ -1300,7 +1367,7 @@ function createBaseCardDOM(data) {
     data.words.forEach((item, i) => {
         const color = HighlighterColors[i % HighlighterColors.length];
         const cleanWord = item.word.replace(/'/g, "\\'");
-        defHTML += `<div class="def-item" data-word="${cleanWord}" style="flex-direction: column; align-items: flex-start; cursor:pointer; transition: transform 0.2s;" onclick="speakTTS('${cleanWord}', event)" oncontextmenu="window.lookupWord('${cleanWord}', this); return false;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+        defHTML += `<div class="def-item" data-word="${cleanWord}" style="flex-direction: column; align-items: flex-start; cursor:pointer; transition: transform 0.2s;" onclick="speakTTS('${cleanWord}', event)" oncontextmenu="window.callEudic('${cleanWord}', this); return false;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
             <div style="margin-bottom: 2px;"><mark class="hl" style="background-color: ${color}; font-weight: 600; margin-right: 6px;">${item.word}</mark><span style="font-size: 12px; color: #888;">${item.phonetic || ''}</span></div>
             <div class="zh-def" style="color: #444;">${item.definition}</div>
         </div>`;
@@ -1381,7 +1448,7 @@ function drawDynamicTree(cardDOM, data) {
         el.style.cursor = 'pointer';
         el.setAttribute('data-word', cleanWordAttr);
         el.setAttribute('onclick', `speakTTS('${cleanWordAttr}', event)`);
-        el.setAttribute('oncontextmenu', `window.lookupWord('${cleanWordAttr}'); return false;`);
+        el.setAttribute('oncontextmenu', `window.callEudic('${cleanWordAttr}'); return false;`);
         el.style.userSelect = 'none'; 
         el.style.webkitUserSelect = 'none';
         el.innerText = item.word;
@@ -1599,12 +1666,11 @@ async function renderCategory(category) {
     currentCategory = category;
     const resultsGrid = document.getElementById('resultsGrid');
     const stagingArea = document.getElementById('stagingArea');
-    
-    // 🚀 消除闪烁感：先等 UFS 4.0 把数据拿出来，拿到手后再去清空屏幕
-    allImportedData = await localforage.getItem('word_cards_cat_' + category) || [];
-    
     resultsGrid.innerHTML = '';
     stagingArea.innerHTML = '';
+    
+    // 🚀 核心优化：按需从硬盘抓取当前分类的几十条数据，拒绝 27MB 霸占内存
+    allImportedData = await localforage.getItem('word_cards_cat_' + category) || [];
     rawResultsData = allImportedData;
     generatedImagesData = new Array(rawResultsData.length).fill(null);
     generatedDOMs = new Array(rawResultsData.length).fill(null);
@@ -1632,6 +1698,8 @@ async function renderCategory(category) {
         document.getElementById('downloadDataBtn').style.display = 'block';
     }
 }
+
+async function updateAllCardsTheme() { /* 多主题选择器已移除 */ }
 
 // --- 相册功能函数 ---
 function openLightbox(index) {
@@ -1724,8 +1792,8 @@ function initDrawingCanvas() {
                     } else if (sentenceNode && targetElement.closest('.en-paragraph')) {
                         word = getWordAtPoint(e.clientX, e.clientY, targetElement);
                     }
-                    if (word && window.lookupWord) {
-                        window.lookupWord(word, targetElement);
+                    if (word && window.callEudic) {
+                        window.callEudic(word, targetElement);
                     }
                 }, 500);
             }
@@ -2585,10 +2653,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 let word = target.substring(left, right);
-                if (word && window.lookupWord) {
+                if (word && window.callEudic) {
                     speakTTS(word);
-                    window.lookupWord(word);
-                    // 尝试延时夺回焦点
+                    window.callEudic(word);
+                    // 尝试延时夺回焦点（受限于安卓系统分屏安全机制，可能无法100%强行夺回）
                     setTimeout(focusTypingInput, 500);
                     setTimeout(focusTypingInput, 1500);
                 }
@@ -2635,13 +2703,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     word = getWordAtPoint(clientX, clientY, e.target);
                 }
             }
-            if (word && window.lookupWord) {
+            if (word && window.callEudic) {
                 speakTTS(word);
                 window.getSelection().removeAllRanges();
                 if(document.activeElement && document.activeElement.id !== 'typingHiddenInput') {
                     document.activeElement.blur();
                 }
-                window.lookupWord(word, tTargetElement);
+                window.callEudic(word, tTargetElement);
             }
         }, 500);
     }, { passive: true });
@@ -2728,9 +2796,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let word = typingTargetText.substring(left, right);
-            if (word && window.lookupWord) {
+            if (word && window.callEudic) {
                 window.getSelection().removeAllRanges();
-                window.lookupWord(word);
+                window.callEudic(word);
                 setTimeout(focusTypingInput, 300);
             }
         }
