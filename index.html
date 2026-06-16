@@ -2288,9 +2288,11 @@ function startAutoSync() {
     bar.style.width = '100%';
     setTimeout(() => bar.style.width = '0%', 10);
     
-    // 基于当前时间的 10 秒区间生成共享 ID (10秒内点击即同组)
-    const timeBucket = Math.floor(Date.now() / 10000);
+    // 🚀 核心优化：全向雷达匹配。基于 12 秒窗口，并提前计算好“过去”和“未来”的房间号，完美抹平两台设备的时差
+    const timeBucket = Math.floor(Date.now() / 12000);
     const syncRoomId = `catchase_sync_v2_${timeBucket}`;
+    const fallbackRoomPrev = `catchase_sync_v2_${timeBucket - 1}`;
+    const fallbackRoomNext = `catchase_sync_v2_${timeBucket + 1}`;
     
     if (peer) { try { peer.destroy(); } catch(e){} peer = null; }
 
@@ -2317,22 +2319,43 @@ function startAutoSync() {
 
     peer.on('error', (err) => {
         if (err.type === 'unavailable-id') {
-            // 房间已被占用，作为客户端连接
             console.log("As Client connecting to:", syncRoomId);
             peer = new Peer(peerConfig);
             peer.on('open', () => {
-                const conn = peer.connect(syncRoomId);
-                conn.on('open', () => {
-                    title.innerText = "🔗 已连接设备，同步中...";
-                    conn.send({ type: 'sync_data', payload: getSyncData() });
-                });
-                conn.on('data', (data) => {
-                    if(data.type === 'sync_data') {
-                        mergeSyncData(data.payload);
-                        title.innerText = "✅ 同bs同步合并成功！";
-                        setTimeout(closeP2PSync, 1500);
+                // 统一定义握手成功后的动作
+                const setupConn = (c) => {
+                    c.on('open', () => {
+                        title.innerText = "🔗 已连接设备，同步中...";
+                        c.send({ type: 'sync_data', payload: getSyncData() });
+                    });
+                    c.on('data', (data) => {
+                        if(data.type === 'sync_data') {
+                            mergeSyncData(data.payload);
+                            title.innerText = "✅ 同步合并成功！";
+                            setTimeout(closeP2PSync, 1500);
+                        }
+                    });
+                };
+
+                // 1. 尝试连接当前时间的房间
+                let conn = peer.connect(syncRoomId);
+                setupConn(conn);
+
+                // 2. 如果 1.5 秒内没遇到（说明另一台设备时间比我慢），去“过去的房间”找
+                setTimeout(() => {
+                    if (!title.innerText.includes('✅') && !title.innerText.includes('🔗')) {
+                        const connPrev = peer.connect(fallbackRoomPrev);
+                        setupConn(connPrev);
                     }
-                });
+                }, 1500);
+
+                // 3. 如果 3 秒了还没遇到（说明另一台设备时间比我快，比如三星比 iPad 快 3 秒），去“未来的房间”找
+                setTimeout(() => {
+                    if (!title.innerText.includes('✅') && !title.innerText.includes('🔗')) {
+                        const connNext = peer.connect(fallbackRoomNext);
+                        setupConn(connNext);
+                    }
+                }, 3000);
             });
         } else {
             title.innerText = "❌ 同步失败: " + err.type;
