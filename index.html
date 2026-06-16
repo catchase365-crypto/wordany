@@ -635,7 +635,6 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
     <div id="syncStatus" style="margin: 10px 0; padding: 12px; background: rgba(255, 235, 59, 0.1); border: 1px solid rgba(255, 235, 59, 0.3); border-radius: 8px; color: #ffeb3b; font-size: 13px; display: none; text-align: center; line-height: 1.5;"></div>
     
     <div class="btn-group">
-        <button id="abortBtn" onclick="abortGeneration()" style="background: #dc3545; display: none;">强制停止生成</button>
         <button id="downloadBtn" onclick="downloadAllImages()">打包下载所有图片</button>
         <button id="downloadDataBtn" onclick="downloadAllData()">下载轻量数据(JSONL)</button>
     </div>
@@ -1047,8 +1046,6 @@ let currentGalleryIndex = 0;
 let cardsPerView = 1;
 let allImportedData = [];
 let currentCategory = 'All';
-let touchStartX = 0;
-let isAborted = false;
 let currentRenderId = 0;
 let currentGlobalTheme = localStorage.getItem('app_theme') || 'oled';
 let isInkMode = localStorage.getItem('is_ink_mode') === 'true';
@@ -1244,70 +1241,7 @@ const HighlighterColors = [
 
 
 
-async function startBatchGeneration() {
-    isAborted = false;
-    currentRenderId++;
-    document.getElementById('abortBtn').style.display = 'block';
-    const rawTopic = document.getElementById('topicInput').value;
-    const generateBtn = document.getElementById('generateBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
-    const resultsGrid = document.getElementById('resultsGrid');
-    const stagingArea = document.getElementById('stagingArea');
-
-    if(!rawTopic) return alert("请输入内容！");
-    
-    const topics = rawTopic.split(/;|；|\n/).map(t => t.trim()).filter(t => t);
-    if(topics.length === 0) return alert("请输入至少一个关键词！");
-
-    generateBtn.disabled = true;
-    generateBtn.innerText = 'AI与排版引擎正在运算...';
-    downloadBtn.style.display = 'none';
-    document.getElementById('downloadDataBtn').style.display = 'none';
-    resultsGrid.innerHTML = ''; 
-    stagingArea.innerHTML = '';
-    generatedImagesData = new Array(topics.length).fill(null);
-    generatedDOMs = new Array(topics.length).fill(null);
-
-    topics.forEach((topic, index) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'image-wrapper';
-        wrapper.id = `wrapper-${index}`;
-        wrapper.innerHTML = `<div class="status-text">正在构思<br><b>${topic}</b><br>自适应排版中...</div>`;
-        resultsGrid.appendChild(wrapper);
-    });
-
-    // 离线模式：直接尝试解析输入内容
-    try {
-        const data = JSON.parse(rawTopic);
-        allImportedData = [data];
-        await renderCategory('All');
-    } catch (e) {
-        alert("无法识别输入格式，请输入有效的 JSON 对象。");
-    }
-
-    generateBtn.disabled = false;
-    generateBtn.innerText = '生成精美卡片';
-    document.getElementById('abortBtn').style.display = 'none';
-    if (generatedImagesData.some(item => item !== null)) {
-        downloadBtn.style.display = 'block';
-        document.getElementById('downloadDataBtn').style.display = 'block';
-    }
-}
-
-function abortGeneration() {
-    if(confirm("确定要强制停止生成吗？已完成的卡片将保留。")) {
-        isAborted = true;
-        document.getElementById('generateBtn').disabled = false;
-        document.getElementById('generateBtn').innerText = '生成精美卡片';
-        document.getElementById('abortBtn').style.display = 'none';
-        if (generatedImagesData.some(item => item !== null)) {
-            document.getElementById('downloadBtn').style.display = 'block';
-            document.getElementById('downloadDataBtn').style.display = 'block';
-        }
-    }
-}
-
-
+/* 旧版废弃 AI 批量生成函数大扫除完毕 */
 
 function createBaseCardDOM(data) {
     const card = document.createElement('div');
@@ -1666,11 +1600,12 @@ async function renderCategory(category) {
     currentCategory = category;
     const resultsGrid = document.getElementById('resultsGrid');
     const stagingArea = document.getElementById('stagingArea');
+    
+    // 🚀 消除闪烁感：先等 UFS 4.0 把数据拿出来，拿到手后再去清空屏幕
+    allImportedData = await localforage.getItem('word_cards_cat_' + category) || [];
+    
     resultsGrid.innerHTML = '';
     stagingArea.innerHTML = '';
-    
-    // 🚀 核心优化：按需从硬盘抓取当前分类的几十条数据，拒绝 27MB 霸占内存
-    allImportedData = await localforage.getItem('word_cards_cat_' + category) || [];
     rawResultsData = allImportedData;
     generatedImagesData = new Array(rawResultsData.length).fill(null);
     generatedDOMs = new Array(rawResultsData.length).fill(null);
@@ -1698,8 +1633,6 @@ async function renderCategory(category) {
         document.getElementById('downloadDataBtn').style.display = 'block';
     }
 }
-
-async function updateAllCardsTheme() { /* 多主题选择器已移除 */ }
 
 // --- 相册功能函数 ---
 function openLightbox(index) {
