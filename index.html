@@ -610,10 +610,11 @@
             display: grid !important;
             grid-template-columns: 1.3fr 1fr;
             grid-template-rows: 1fr 1fr;
-            width: 800px !important;
-            height: 650px !important;
+            width: calc(100% - 20px) !important;
+            height: 98vh !important;
             padding: 15px !important;
             gap: 15px;
+            box-sizing: border-box !important;
         }
         .card-container.ipad-landscape-dict .top-section { grid-column: 1; grid-row: 1 / 3; margin: 0 !important; overflow-y: auto; height: auto; }
         .card-container.ipad-landscape-dict .middle-tree { grid-column: 2; grid-row: 1; margin: 0 !important; min-height: 0 !important; height: auto; }
@@ -1969,7 +1970,7 @@ async function updateLightboxContent() {
         cardsPerView = 1;
         isSpecialLayout = true;
         if (isSidebarActive) {
-            cardW = 800; cardH = 650; specialClass = 'ipad-landscape-dict';
+            cardW = winW - 10; cardH = winH - 10; specialClass = 'ipad-landscape-dict';
         } else {
             cardW = 1100; cardH = 700; specialClass = 'ipad-landscape';
         }
@@ -2006,7 +2007,7 @@ async function updateLightboxContent() {
         const domNode = generatedDOMs[idx];
         if (domNode) {
             const wrapper = document.createElement('div');
-            wrapper.style.width = (cardW * finalScale) + 'px';
+            wrapper.style.width = isSidebarActive && isPadLandscape ? '100%' : (cardW * finalScale) + 'px';
             wrapper.style.height = (cardH * finalScale) + 'px';
             wrapper.style.display = 'flex';
             wrapper.style.justifyContent = 'center';
@@ -2015,7 +2016,7 @@ async function updateLightboxContent() {
 
             const displayNode = domNode.cloneNode(true);
             if (isSpecialLayout) displayNode.classList.add(specialClass);
-            displayNode.style.transform = `scale(${finalScale})`;
+            displayNode.style.transform = isSidebarActive && isPadLandscape ? 'none' : `scale(${finalScale})`;
             displayNode.style.transformOrigin = 'center top';
             displayNode.style.flexShrink = '0';
             displayNode.style.margin = '0';
