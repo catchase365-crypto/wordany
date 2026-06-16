@@ -729,7 +729,7 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
                     <div>WPM: <span id="typingWpm" style="font-family: monospace; font-weight: bold;">0</span></div>
                     <div>ACC: <span id="typingAcc" style="font-family: monospace; font-weight: bold;">100%</span></div>
                 </div>
-                <div id="batteryLevel" style="display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: bold;">
+                <div id="batteryLevel" onclick="toggleBatteryVisibility()" style="display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: bold; cursor: pointer; min-width: 60px; justify-content: flex-end;">
                     <div style="width: 24px; height: 12px; border: 2px solid var(--text-color); border-radius: 2px; position: relative; padding: 1px;">
                         <div id="batteryBar" style="width: 100%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
                     </div>
@@ -2765,7 +2765,34 @@ document.addEventListener('DOMContentLoaded', () => {
         tTargetElement = null;
     }, { passive: false });
 
-    if ('getBattery' in navigator) { navigator.getBattery().then(battery => { const updateBattery = () => { const level = Math.round(battery.level * 100); document.getElementById('batteryBar').style.width = level + '%'; document.getElementById('batteryText').innerText = level + '%'; }; updateBattery(); battery.addEventListener('levelchange', updateBattery); }); }
+    const isApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+    window.toggleBatteryVisibility = function() {
+        const isHidden = localStorage.getItem('battery_hidden') === 'true';
+        localStorage.setItem('battery_hidden', !isHidden);
+        applyBatteryVisibility();
+    };
+    function applyBatteryVisibility() {
+        const el = document.getElementById('batteryLevel');
+        if (!el) return;
+        if (isApple) { el.style.display = 'none'; return; }
+        const isHidden = localStorage.getItem('battery_hidden') === 'true';
+        el.style.opacity = isHidden ? '0.15' : '1';
+        Array.from(el.children).forEach(c => c.style.visibility = isHidden ? 'hidden' : 'visible');
+    }
+    if (!isApple && 'getBattery' in navigator) {
+        navigator.getBattery().then(battery => {
+            const update = () => {
+                const level = Math.round(battery.level * 100);
+                const bar = document.getElementById('batteryBar');
+                const txt = document.getElementById('batteryText');
+                if(bar) bar.style.width = level + '%';
+                if(txt) txt.innerText = level + '%';
+            };
+            update();
+            battery.addEventListener('levelchange', update);
+        });
+    }
+    applyBatteryVisibility();
 
 // 新增：盲打模式区域的鼠标右键（PC或长按模拟）点击查词，与回车查词逻辑完全复用、对齐
     typingCard.addEventListener('contextmenu', (e) => {
