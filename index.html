@@ -3221,6 +3221,16 @@ function saveApiKey() {
     alert('✅ API Key 已安全固化在本地浏览器！');
 }
 
+// --- 终极保底防丢机制：监测切后台与杀进程 ---
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        saveProgressToDB();
+    }
+});
+window.addEventListener('pagehide', () => {
+    saveProgressToDB();
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     initDictDB();
     const ca = document.getElementById('dict-content-area');
