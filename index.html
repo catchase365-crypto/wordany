@@ -692,7 +692,7 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
         <h3 id="syncTitle" style="color: #00ff41; margin-bottom: 10px;">正在搜寻同步设备...</h3>
         <p id="syncDesc" style="font-size: 14px; color: #888; line-height: 1.6;">请确保其他设备也在 10 秒内点击了同步按钮。<br>系统正在局域网内自动匹配学习进度。</p>
         <div id="syncProgress" style="width: 100%; height: 4px; background: #222; margin-top: 25px; border-radius: 2px; overflow: hidden;">
-            <div id="syncProgressBar" style="width: 100%; height: 100%; background: #00ff41; transition: width 10s linear;"></div>
+            <div id="syncProgressBar" style="width: 100%; height: 100%; background: #00ff41; transition: width 20s linear;"></div>
         </div>
         <button class="icon-btn" style="margin-top: 30px; width: 100%; justify-content: center;" onclick="closeP2PSync()">取消</button>
     </div>
@@ -2283,9 +2283,10 @@ function startAutoSync() {
     
     // 核心修复：每次开启同步前强制重置 UI 状态到初始值
     title.innerText = "正在搜寻同步设备...";
-    desc.innerHTML = "请确保其他设备也在 10 秒内点击了同步按钮。<br>系统正在局域网内自动匹配学习进度。";
+    desc.innerHTML = "全向雷达已开启，正在广域匹配...<br>请确保两台设备均已点击同步按钮。";
     bar.style.backgroundColor = '#00ff41';
     bar.style.width = '100%';
+    bar.style.transition = 'width 20s linear';
     setTimeout(() => bar.style.width = '0%', 10);
     
     // 🚀 核心优化：全向雷达匹配。基于 12 秒窗口，并提前计算好“过去”和“未来”的房间号，完美抹平两台设备的时差
@@ -2363,11 +2364,11 @@ function startAutoSync() {
     });
 
     syncTimer = setTimeout(() => {
-        if (document.getElementById('p2pSyncModal').style.display === 'flex' && !title.innerText.includes('✅')) {
+        if (document.getElementById('p2pSyncModal').style.display === 'flex' && !title.innerText.includes('✅') && !title.innerText.includes('🔗')) {
             title.innerText = "⌛ 未发现其他同步设备";
             setTimeout(closeP2PSync, 2000);
         }
-    }, 10000);
+    }, 20000);
 }
 
 function closeP2PSync() {
