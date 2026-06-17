@@ -778,7 +778,7 @@ window.addEventListener("click", function(){ var d=document.documentElement; (d.
 
     </div>
     
-    <textarea id="typingHiddenInput" name="blind_typing_area" autocomplete="nope" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="position: fixed; top: 50%; left: 50%; width: 1px; height: 1px; opacity: 0.01; z-index: -1; font-size: 16px; border: none; outline: none; resize: none; background: transparent; transform: translate(-50%, -50%);"></textarea>
+    <input type="password" id="typingHiddenInput" name="blind_typing_area" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" lang="en" inputmode="email" data-lpignore="true" style="position: fixed; top: 50%; left: 50%; width: 1px; height: 1px; opacity: 0.01; z-index: -1; font-size: 16px; border: none; outline: none; background: transparent; transform: translate(-50%, -50%);">
     
     <style>
         .t-char { 
@@ -2670,6 +2670,8 @@ function retryTyping() {
     
     const input = document.getElementById('typingHiddenInput');
     input.value = '';
+    input.setAttribute('lang', 'en');
+    input.setAttribute('inputmode', 'latin');
     
     const container = document.getElementById('typingTextContainer');
     // 预填充所有字符但设为透明，确保布局稳定不跳动
