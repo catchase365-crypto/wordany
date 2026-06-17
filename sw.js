@@ -1,4 +1,4 @@
-var C='v_1781697112700';
+var C='v_17816971127001';
 var assets = ['./', './index.html', './manifest.json'];
 self.addEventListener('install', e => e.waitUntil(caches.open(C).then(c => c.addAll(assets)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => k !== C && caches.delete(k)))).then(() => self.clients.claim())));
