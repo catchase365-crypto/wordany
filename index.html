@@ -2678,7 +2678,9 @@ function retryTyping() {
     container.innerHTML = typingTargetText.split('').map((char, index) => {
         const isSpace = char === ' ';
         const isHint = !isSpace && (!/[a-zA-Z0-9]/.test(char) || (index === 0 || !/[a-zA-Z0-9]/.test(typingTargetText[index - 1])));
-        return `<span class="t-char ${index === 0 ? 't-current' : ''} ${!isSpace ? 't-untyped-placeholder' : ''}" data-real="${char}" style="${isHint || isSpace ? '' : 'color:transparent'}">${isSpace ? '&nbsp;' : char}</span>`;
+        const sIdx = typingSentenceBounds.findIndex(b => index >= b.start && index <= b.end);
+        const cleanS = sIdx !== -1 ? typingTargetText.substring(typingSentenceBounds[sIdx].start, typingSentenceBounds[sIdx].end + 1).replace(/'/g, "\\'").trim() : '';
+        return `<span class="t-char ${index === 0 ? 't-current' : ''} ${!isSpace ? 't-untyped-placeholder' : ''}" data-real="${char}" onclick="speakTTS('${cleanS}', event, ${sIdx}, this); focusTypingInput();" style="${isHint || isSpace ? '' : 'color:transparent'}">${isSpace ? '&nbsp;' : char}</span>`;
     }).join('');
 
     focusTypingInput();
@@ -2744,6 +2746,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- 新增：Enter 键专属查词拦截 ---
         hiddenInput.addEventListener('keydown', (e) => {
+            // 盲打模式下：任何按键按下时立刻打断朗读，并清除点读高亮（恢复隐藏），确保打字不间断
+            window.speechSynthesis.cancel();
+            document.querySelectorAll('#typingLandscapeCard .active-focus').forEach(el => el.classList.remove('active-focus'));
+
             if (e.key === 'Enter') {
                 e.preventDefault(); // 彻底屏蔽回车键的文字输入
                 if (!typingTargetText) return;
@@ -2855,12 +2861,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.stopPropagation();
                 setTimeout(focusTypingInput, 100);
             } else {
-                if (tTargetElement.hasAttribute('data-word')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    tTargetElement.click();
-                    setTimeout(focusTypingInput, 100);
-                }
+                e.preventDefault();
+                e.stopPropagation();
+                // 完美支持短按点击单词、英文句子、中文句子触发朗读显形
+                let exactTarget = e.target.closest('[data-word]') || e.target.closest('.t-char') || e.target.closest('.t-zh-sentence');
+                if (exactTarget) exactTarget.click();
+                setTimeout(focusTypingInput, 100);
             }
         }
         tTargetElement = null;
